@@ -158,7 +158,14 @@ async function startRecording() {
         sourceNode = null;
     }
 
-    // 새 MediaRecorder 생성 (마이크는 계속 연결됨)
+    // 마이크가 없으면 새로 요청
+    if (!microphoneStream) {
+        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        microphone = audioCtx.createMediaStreamSource(microphoneStream);
+        microphone.connect(analyser);
+    }
+
+    // 새 MediaRecorder 생성
     mediaRecorder = new MediaRecorder(microphoneStream);
     mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
     mediaRecorder.onstop = saveRecording;
