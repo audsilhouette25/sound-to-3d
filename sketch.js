@@ -474,6 +474,8 @@ function confirmTraining() {
 
     const dataCount = brain.data.training.length;
 
+    console.log(`Successfully saved! Total samples: ${dataCount}`);
+
     // 데이터가 2개 이상이면 정규화, 1개는 정규화 없이 학습
     if (dataCount >= 2) {
         brain.normalizeData();
@@ -482,7 +484,8 @@ function confirmTraining() {
     updateStatus('statusTraining', 'status-recording');
 
     brain.train({ epochs: 20 }, () => {
-        alert(`Training complete with ${dataCount} sample(s)!\nData has been automatically saved.`);
+        console.log('Training complete!');
+        alert(`✓ Training Complete!\n\nSaved ${dataCount} sample(s) to storage.\nModel is ready for predictions.`);
         state = 'IDLE';
 
         // 재생 중지
