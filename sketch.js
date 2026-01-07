@@ -433,12 +433,30 @@ function confirmTraining() {
     saveTrainingData();
     updateDataCount();
 
-    brain.normalizeData();
+    const dataCount = brain.data.training.length;
 
-    updateStatus('statusTraining', 'status-recording');
+    // 데이터가 5개 이상일 때만 학습 진행
+    if (dataCount >= 5) {
+        brain.normalizeData();
+        updateStatus('statusTraining', 'status-recording');
 
-    brain.train({ epochs: 20 }, () => {
-        alert("Training complete! Data has been automatically saved.");
+        brain.train({ epochs: 20 }, () => {
+            alert(`Training complete with ${dataCount} samples!\nData has been automatically saved.`);
+            state = 'IDLE';
+
+            // 재생 중지
+            if(audioTag) audioTag.pause();
+
+            const t = translations[currentLang];
+            document.getElementById('labeling-zone').style.display = "none";
+            document.getElementById('btn-main').innerText = t.btnRecord;
+            document.getElementById('btn-play').style.display = "none";
+
+            updateStatus('statusActive', 'status-idle');
+        });
+    } else {
+        // 데이터가 충분하지 않을 때는 학습 없이 저장만
+        alert(`Data saved! (${dataCount}/${5} samples)\nCollect at least 5 samples to start training.`);
         state = 'IDLE';
 
         // 재생 중지
@@ -450,7 +468,7 @@ function confirmTraining() {
         document.getElementById('btn-play').style.display = "none";
 
         updateStatus('statusActive', 'status-idle');
-    });
+    }
 }
 
 // 학습 데이터를 localStorage에 저장
@@ -501,14 +519,19 @@ function loadTrainingData() {
             brain.addData(xs, ys);
         });
 
-        // 데이터가 충분하면 정규화 및 학습
+        // 데이터가 5개 이상이면 정규화 및 학습
         const dataArray = brain.data.training || [];
+        console.log(`Loaded ${dataArray.length} samples from localStorage`);
+
         if (dataArray.length >= 5) {
             brain.normalizeData();
             brain.train({ epochs: 20 }, () => {
                 console.log('기존 학습 데이터로 재학습 완료!');
-                alert(`Loaded ${trainingData.data.length} training samples from previous session.\nContinue training to improve accuracy.`);
+                alert(`Loaded ${dataArray.length} training samples from previous session.\nModel is ready for predictions!`);
             });
+        } else if (dataArray.length > 0) {
+            console.log(`${dataArray.length} samples loaded, but need 5+ to train`);
+            alert(`Loaded ${dataArray.length} training samples.\nCollect ${5 - dataArray.length} more samples to start training.`);
         }
     } catch (e) {
         console.error('데이터 불러오기 실패:', e);
