@@ -176,8 +176,15 @@ function stopRecording() {
     mediaRecorder.stop();
     state = 'REVIEWING';
 
-    // 마이크는 중단하지 않고 analyser 연결만 유지 (시각화 계속 동작)
-    // 녹음만 중단됨
+    // 마이크 중단
+    if (microphoneStream) {
+        microphoneStream.getTracks().forEach(track => track.stop());
+        microphoneStream = null;
+    }
+    if (microphone) {
+        microphone.disconnect();
+        microphone = null;
+    }
 
     const t = translations[currentLang];
     document.getElementById('btn-main').innerText = t.btnReRecord;
