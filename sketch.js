@@ -125,10 +125,28 @@ function startRecording() {
     state = 'RECORDING';
     audioChunks = [];
     recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
-    if(audioTag) audioTag.pause();
+
+    // 이전 녹음 데이터 삭제
+    if(audioTag) {
+        audioTag.pause();
+        audioTag = null;
+    }
+    if(audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+        audioUrl = null;
+    }
+    if(sourceNode) {
+        sourceNode.disconnect();
+        sourceNode = null;
+    }
+
+    // 분석기를 다시 마이크에 연결
+    microphone.connect(analyser);
+
     mediaRecorder.start();
     document.getElementById('btn-main').innerText = "녹음 중단 (Stop)";
     document.getElementById('labeling-zone').style.display = "none";
+    document.getElementById('btn-play').style.display = "none";
 }
 
 function stopRecording() {
@@ -137,29 +155,43 @@ function stopRecording() {
     document.getElementById('btn-main').innerText = "다시 녹음하기";
     document.getElementById('labeling-zone').style.display = "block";
     document.getElementById('btn-confirm').style.display = "block";
+    document.getElementById('btn-play').style.display = "inline-block";
+    document.getElementById('btn-play').innerText = "▶ 녹음 재생";
 }
 
 function saveRecording() {
     audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
     audioUrl = URL.createObjectURL(audioBlob);
-    
-    if (audioTag) audioTag.pause();
+
+    // 오디오 태그 준비만 하고 자동 재생하지 않음
     audioTag = new Audio(audioUrl);
     audioTag.loop = true;
-
-    // [핵심 수정] 재생되는 오디오를 분석기에 연결
-    if (sourceNode) sourceNode.disconnect();
-    sourceNode = audioCtx.createMediaElementSource(audioTag);
-    sourceNode.connect(analyser);
-    analyser.connect(audioCtx.destination); // 스피커로 출력
-
-    audioTag.play();
 
     // 녹음된 평균값 저장 (학습용)
     recordedX.loudness /= recordedX.count;
     recordedX.pitch /= recordedX.count;
     recordedX.brightness /= recordedX.count;
     recordedX.roughness /= recordedX.count;
+}
+
+// 녹음 재생/일시정지 토글
+function togglePlayback() {
+    if (!audioTag) return;
+
+    if (audioTag.paused) {
+        // 재생 시작
+        if (sourceNode) sourceNode.disconnect();
+        sourceNode = audioCtx.createMediaElementSource(audioTag);
+        sourceNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        audioTag.play();
+        document.getElementById('btn-play').innerText = "⏸ 일시정지";
+    } else {
+        // 일시정지
+        audioTag.pause();
+        document.getElementById('btn-play').innerText = "▶ 녹음 재생";
+    }
 }
 
 function animate() {
@@ -276,9 +308,13 @@ function confirmTraining() {
     brain.train({ epochs: 20 }, () => {
         alert("학습 완료! 데이터가 자동 저장되었습니다.");
         state = 'IDLE';
+
+        // 재생 중지
         if(audioTag) audioTag.pause();
+
         document.getElementById('labeling-zone').style.display = "none";
         document.getElementById('btn-main').innerText = "녹음 시작";
+        document.getElementById('btn-play').style.display = "none";
     });
 }
 
