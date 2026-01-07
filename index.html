@@ -55,7 +55,13 @@
             <button id="btn-confirm" onclick="confirmTraining()">학습 데이터로 확정</button>
         </div>
         
-        <button onclick="exportCSV()" style="margin-top:20px; background:#222; color:#888; font-size:0.7em;">데이터 추출 (.CSV)</button>
+        <div id="save-load-zone" style="margin-top:20px; padding-top:15px; border-top:1px solid #333; display:none;">
+            <div style="text-align:center; font-size:0.9em; margin-bottom:10px; color:#00ffcc;">
+                💾 학습 데이터: <span id="data-count">0</span>개
+            </div>
+            <button onclick="exportCSV()" style="background:#222; color:#888; font-size:0.75em; padding:8px;">📊 데이터 내보내기 (CSV)</button>
+            <button onclick="clearAllData()" style="background:#441111; color:#ff6666; font-size:0.75em; padding:8px; margin-top:5px;">🗑️ 모든 학습 데이터 삭제</button>
+        </div>
     </div>
     <div id="three-container"></div>
     <script src="sketch.js"></script>
