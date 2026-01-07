@@ -465,10 +465,20 @@ function loadTrainingData() {
 
     try {
         const trainingData = JSON.parse(saved);
+
+        // 데이터 유효성 검사
+        if (!trainingData || !trainingData.data || !Array.isArray(trainingData.data)) {
+            console.warn('잘못된 데이터 형식, localStorage 초기화');
+            localStorage.removeItem('soundTo3D_trainingData');
+            return;
+        }
+
         console.log('학습 데이터 불러오는 중:', trainingData.data.length, '개');
 
         // 기존 데이터에 추가
         trainingData.data.forEach(item => {
+            if (!item || !item.xs || !item.ys) return; // 잘못된 항목 건너뛰기
+
             const xs = Array.isArray(item.xs) ? item.xs : [item.xs.loudness, item.xs.pitch, item.xs.brightness, item.xs.roughness];
             const ys = Array.isArray(item.ys) ? item.ys : [item.ys.y1, item.ys.y2, item.ys.y3, item.ys.y4, item.ys.shape];
             brain.addData(xs, ys);
@@ -485,6 +495,8 @@ function loadTrainingData() {
         }
     } catch (e) {
         console.error('데이터 불러오기 실패:', e);
+        console.warn('손상된 데이터 제거');
+        localStorage.removeItem('soundTo3D_trainingData');
     }
 }
 
