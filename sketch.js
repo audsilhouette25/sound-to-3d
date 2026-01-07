@@ -503,7 +503,23 @@ function confirmTraining() {
     console.log('  brain.data.training is Array?', Array.isArray(brain.data.training));
     console.log('  brain.data.training.length:', brain.data.training.length);
 
-    const beforeCount = brain.data.training.length;
+    console.log('Inspecting brain.data structure:');
+    console.log('  brain.data keys:', Object.keys(brain.data));
+    console.log('  brain.data.training:', brain.data.training);
+    if (brain.data.data) {
+        console.log('  brain.data.data exists!');
+        console.log('  brain.data.data keys:', Object.keys(brain.data.data));
+        if (brain.data.data.raw) {
+            console.log('  brain.data.data.raw length:', brain.data.data.raw.length);
+        }
+    }
+
+    const beforeCount = brain.data.training ? brain.data.training.length : 0;
+    let beforeRawCount = 0;
+    if (brain.data.data && brain.data.data.raw) {
+        beforeRawCount = brain.data.data.raw.length;
+        console.log('  brain.data.data.raw before:', beforeRawCount);
+    }
 
     try {
         console.log('Calling brain.addData...');
@@ -515,30 +531,36 @@ function confirmTraining() {
         return;
     }
 
-    const afterCount = brain.data.training.length;
+    const afterCount = brain.data.training ? brain.data.training.length : 0;
+    let afterRawCount = 0;
+    if (brain.data.data && brain.data.data.raw) {
+        afterRawCount = brain.data.data.raw.length;
+        console.log('  brain.data.data.raw after:', afterRawCount);
+    }
 
-    console.log(`Brain count: ${beforeCount} → ${afterCount}`);
+    console.log(`Brain count: training ${beforeCount} → ${afterCount}, raw ${beforeRawCount} → ${afterRawCount}`);
 
-    // addData 성공 여부 확인
-    if (afterCount <= beforeCount) {
+    // brain.data.data.raw가 실제 저장소인지 확인
+    const actualCount = afterRawCount > 0 ? afterRawCount : afterCount;
+    const actualBefore = beforeRawCount > 0 ? beforeRawCount : beforeCount;
+
+    if (actualCount <= actualBefore) {
         console.error('CRITICAL: brain.addData() did not increase count!');
-        console.error('This means ml5.js rejected the data silently.');
-        alert('Failed to save training data. Data was rejected by ml5.js. Please refresh the page.');
+        console.error('Checked both brain.data.training and brain.data.data.raw');
+        alert('Failed to save training data. ml5.js is not accepting data. Please refresh the page.');
         return;
     }
 
-    console.log(`✓ Data added successfully (${beforeCount} → ${afterCount})`);
+    console.log(`✓ Data added successfully (${actualBefore} → ${actualCount})`);
 
     // 학습 데이터 자동 저장
     saveTrainingData();
     updateDataCount();
 
-    const dataCount = brain.data.training.length;
-
-    console.log(`Successfully saved! Total samples: ${dataCount}`);
+    console.log(`Successfully saved! Total samples: ${actualCount}`);
 
     // 데이터가 2개 이상이면 정규화, 1개는 정규화 없이 학습
-    if (dataCount >= 2) {
+    if (actualCount >= 2) {
         brain.normalizeData();
     }
 
@@ -546,7 +568,7 @@ function confirmTraining() {
 
     brain.train({ epochs: 20 }, () => {
         console.log('Training complete!');
-        alert(`✓ Training Complete!\n\nSaved ${dataCount} sample(s) to storage.\nModel is ready for predictions.`);
+        alert(`✓ Training Complete!\n\nSaved ${actualCount} sample(s) to storage.\nModel is ready for predictions.`);
         state = 'IDLE';
 
         // 재생 중지
@@ -563,14 +585,25 @@ function confirmTraining() {
 
 // 학습 데이터를 localStorage에 저장 (순수 배열 방식)
 function saveTrainingData() {
-    if (!brain || !brain.data || !brain.data.training) {
+    if (!brain || !brain.data) {
         console.error('Cannot save: brain not initialized');
         return;
     }
 
     try {
-        // brain.data.training에서 순수한 숫자 배열만 추출
-        const dataArray = brain.data.training;
+        // brain.data.data.raw 또는 brain.data.training에서 데이터 추출
+        let dataArray;
+        if (brain.data.data && brain.data.data.raw && Array.isArray(brain.data.data.raw)) {
+            dataArray = brain.data.data.raw;
+            console.log('Using brain.data.data.raw for save');
+        } else if (brain.data.training && Array.isArray(brain.data.training)) {
+            dataArray = brain.data.training;
+            console.log('Using brain.data.training for save');
+        } else {
+            console.error('No valid data source found');
+            return;
+        }
+
         const simpleData = [];
 
         for (let i = 0; i < dataArray.length; i++) {
@@ -698,10 +731,18 @@ function updateDataCount() {
         document.getElementById('data-count').innerText = '0';
         return;
     }
-    const dataArray = brain.data.training || [];
+
+    // brain.data.data.raw가 실제 데이터 저장소일 수 있음
+    let count = 0;
+    if (brain.data.data && brain.data.data.raw && Array.isArray(brain.data.data.raw)) {
+        count = brain.data.data.raw.length;
+    } else if (brain.data.training && Array.isArray(brain.data.training)) {
+        count = brain.data.training.length;
+    }
+
     const countEl = document.getElementById('data-count');
     if (countEl) {
-        countEl.innerText = dataArray.length;
+        countEl.innerText = count;
     }
 }
 
@@ -717,13 +758,18 @@ function clearAllData() {
     localStorage.removeItem('soundTo3D_trainingData');
     console.log('✓ localStorage cleared');
 
-    // brain.data.training 완전히 재초기화
+    // brain.data 완전히 재초기화
     if (brain && brain.data) {
-        const oldLength = brain.data.training ? brain.data.training.length : 0;
+        let oldLength = 0;
+        if (brain.data.data && brain.data.data.raw) {
+            oldLength = brain.data.data.raw.length;
+        } else if (brain.data.training) {
+            oldLength = brain.data.training.length;
+        }
 
-        // 배열을 비우는 것이 아니라 새로 생성
+        // 모든 데이터 구조 초기화
         brain.data.training = [];
-        brain.data.data = { training: [], validation: [], testing: [] };
+        brain.data.data = { raw: [], training: [], validation: [], testing: [] };
 
         console.log(`✓ Brain data reset (${oldLength} → 0)`);
     }
