@@ -470,16 +470,60 @@ function confirmTraining() {
     const inputArray = [recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness];
     const outputArray = [labels.y1, labels.y2, labels.y3, labels.y4, labels.shape];
 
-    console.log('Adding training sample:', { input: inputArray, output: outputArray });
+    // 입력 데이터 상세 검증
+    console.log('Input validation:');
+    console.log('  inputArray:', inputArray);
+    console.log('  inputArray length:', inputArray.length);
+    console.log('  inputArray types:', inputArray.map(v => typeof v));
+    console.log('  inputArray has NaN?:', inputArray.some(v => isNaN(v)));
+
+    console.log('Output validation:');
+    console.log('  outputArray:', outputArray);
+    console.log('  outputArray length:', outputArray.length);
+    console.log('  outputArray types:', outputArray.map(v => typeof v));
+    console.log('  outputArray has NaN?:', outputArray.some(v => isNaN(v)));
+
+    // 데이터 검증
+    if (inputArray.length !== 4 || outputArray.length !== 5) {
+        console.error('ERROR: Wrong array dimensions!');
+        alert('Data dimension error. Please refresh and try again.');
+        return;
+    }
+
+    if (inputArray.some(v => typeof v !== 'number' || isNaN(v)) ||
+        outputArray.some(v => typeof v !== 'number' || isNaN(v))) {
+        console.error('ERROR: Data contains non-numbers or NaN!');
+        alert('Data validation error. Please refresh and try again.');
+        return;
+    }
+
+    console.log('Brain state before addData:');
+    console.log('  brain exists?', !!brain);
+    console.log('  brain.data exists?', !!brain.data);
+    console.log('  brain.data.training is Array?', Array.isArray(brain.data.training));
+    console.log('  brain.data.training.length:', brain.data.training.length);
 
     const beforeCount = brain.data.training.length;
-    brain.addData(inputArray, outputArray);
+
+    try {
+        console.log('Calling brain.addData...');
+        brain.addData(inputArray, outputArray);
+        console.log('brain.addData returned successfully');
+    } catch (err) {
+        console.error('EXCEPTION in brain.addData():', err);
+        alert('Error adding data: ' + err.message);
+        return;
+    }
+
     const afterCount = brain.data.training.length;
+
+    console.log(`Brain count: ${beforeCount} → ${afterCount}`);
 
     // addData 성공 여부 확인
     if (afterCount <= beforeCount) {
-        console.error('CRITICAL: brain.addData() failed!');
-        alert('Failed to save training data. Please refresh the page and try again.');
+        console.error('CRITICAL: brain.addData() did not increase count!');
+        console.error('This means ml5.js rejected the data silently.');
+        alert('Failed to save training data. Data was rejected by ml5.js. Please refresh the page.');
         return;
     }
 
@@ -663,33 +707,73 @@ function updateDataCount() {
 
 // 모든 학습 데이터 삭제
 function clearAllData() {
-    if (confirm('Delete all training data?\nThis action cannot be undone.')) {
-        localStorage.removeItem('soundTo3D_trainingData');
-
-        // brain.data.training 배열을 직접 초기화
-        if (brain && brain.data && Array.isArray(brain.data.training)) {
-            brain.data.training = [];
-            console.log('Brain training data cleared');
-        }
-
-        updateDataCount();
-        alert('All training data has been deleted.');
+    if (!confirm('Delete all training data?\nThis action cannot be undone.')) {
+        return;
     }
-}
 
-// 긴급 복구: localStorage 초기화 (브라우저 콘솔에서 사용)
-function emergencyReset() {
-    console.log('=== Emergency Reset ===');
+    console.log('=== Clearing all training data ===');
+
+    // localStorage 삭제
     localStorage.removeItem('soundTo3D_trainingData');
+    console.log('✓ localStorage cleared');
 
-    if (brain && brain.data && Array.isArray(brain.data.training)) {
+    // brain.data.training 완전히 재초기화
+    if (brain && brain.data) {
+        const oldLength = brain.data.training ? brain.data.training.length : 0;
+
+        // 배열을 비우는 것이 아니라 새로 생성
         brain.data.training = [];
-        console.log('Brain data cleared');
+        brain.data.data = { training: [], validation: [], testing: [] };
+
+        console.log(`✓ Brain data reset (${oldLength} → 0)`);
     }
 
     updateDataCount();
-    console.log('Emergency reset complete. Please reload the page.');
-    alert('Emergency reset complete. Please reload the page.');
+
+    const currentCount = brain && brain.data && brain.data.training ? brain.data.training.length : 0;
+    console.log(`Final count: ${currentCount}`);
+
+    if (currentCount === 0) {
+        alert('✓ All training data has been deleted successfully.');
+    } else {
+        console.error('WARNING: Count is not 0 after clearing!');
+        alert('Warning: Data may not be fully cleared. Please refresh the page.');
+    }
+}
+
+// 긴급 복구: 완전 초기화 (브라우저 콘솔에서 사용)
+function emergencyReset() {
+    console.log('=== EMERGENCY RESET ===');
+
+    // 모든 localStorage 항목 삭제
+    localStorage.clear();
+    console.log('✓ All localStorage cleared');
+
+    // brain 완전 재생성
+    if (typeof ml5 !== 'undefined') {
+        brain = ml5.neuralNetwork({
+            inputs: 4,
+            outputs: 5,
+            task: 'regression',
+            debug: false
+        });
+        console.log('✓ Brain recreated');
+
+        // brain 초기화 대기
+        const waitAndUpdate = () => {
+            if (brain.data && Array.isArray(brain.data.training)) {
+                updateDataCount();
+                console.log('✓ Brain ready, count updated');
+                alert('Emergency reset complete. Everything has been reset.');
+            } else {
+                setTimeout(waitAndUpdate, 100);
+            }
+        };
+        setTimeout(waitAndUpdate, 100);
+    } else {
+        console.log('ml5 not available, just clearing localStorage');
+        alert('Emergency reset complete. Please reload the page.');
+    }
 }
 
 // CSV로 데이터 내보내기
