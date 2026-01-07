@@ -93,16 +93,12 @@ async function initEngine() {
     updateStatus('statusInit', 'status-idle');
 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    microphone = audioCtx.createMediaStreamSource(microphoneStream);
+
+    // 마이크는 녹음 시작할 때만 켜도록 변경 (사용자 요청)
+    // microphoneStream은 null로 시작
 
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
-    microphone.connect(analyser); // 기본적으로 마이크를 분석기에 연결
-
-    mediaRecorder = new MediaRecorder(microphoneStream);
-    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-    mediaRecorder.onstop = saveRecording;
 
     brain = ml5.neuralNetwork({
         inputs: 4,
@@ -114,12 +110,11 @@ async function initEngine() {
     console.log('Brain created, waiting for ready state...');
 
     // ml5.js brain이 완전히 초기화될 때까지 대기
-    // 약간의 지연 후 데이터 불러오기
     setTimeout(() => {
         console.log('Brain ready, loading training data...');
         loadTrainingData();
         updateDataCount();
-    }, 100);
+    }, 500); // 100ms → 500ms로 증가
 
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
