@@ -157,15 +157,10 @@ async function startRecording() {
         sourceNode = null;
     }
 
-    // 마이크 재활성화 (이전에 중단된 경우)
-    if (!microphoneStream || !microphoneStream.active) {
-        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        microphone = audioCtx.createMediaStreamSource(microphoneStream);
-        microphone.connect(analyser);
-        mediaRecorder = new MediaRecorder(microphoneStream);
-        mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-        mediaRecorder.onstop = saveRecording;
-    }
+    // 새 MediaRecorder 생성 (마이크는 계속 연결됨)
+    mediaRecorder = new MediaRecorder(microphoneStream);
+    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+    mediaRecorder.onstop = saveRecording;
 
     mediaRecorder.start();
     const t = translations[currentLang];
@@ -180,10 +175,8 @@ function stopRecording() {
     mediaRecorder.stop();
     state = 'REVIEWING';
 
-    // 마이크 완전히 중단
-    if (microphoneStream) {
-        microphoneStream.getTracks().forEach(track => track.stop());
-    }
+    // 마이크는 중단하지 않고 analyser 연결만 유지 (시각화 계속 동작)
+    // 녹음만 중단됨
 
     const t = translations[currentLang];
     document.getElementById('btn-main').innerText = t.btnReRecord;
@@ -247,7 +240,7 @@ function animate() {
             targetY.shape = parseFloat(document.getElementById('shape-selector').value);
         } else if (brain && brain.data) {
             // 평상시에는 AI가 예측
-            const dataArray = Array.isArray(brain.data) ? brain.data : (brain.data.raw || []);
+            const dataArray = brain.data.training || [];
             if (dataArray.length >= 5) {
                 brain.predict(currentX, (err, res) => {
                     if(!err) {
@@ -418,6 +411,8 @@ function confirmTraining() {
         roughness: recordedX.roughness
     }, labels);
 
+    console.log('brain.data.training after addData:', brain.data.training);
+
     // 학습 데이터 자동 저장
     saveTrainingData();
     updateDataCount();
@@ -448,8 +443,8 @@ function saveTrainingData() {
 
     console.log('brain.data structure:', brain.data);
 
-    // ml5.js neuralNetwork는 brain.data 자체가 배열
-    const dataArray = Array.isArray(brain.data) ? brain.data : (brain.data.raw || []);
+    // ml5.js neuralNetwork는 brain.data.training이 실제 데이터 배열
+    const dataArray = brain.data.training || [];
 
     const trainingData = {
         data: dataArray,
@@ -479,7 +474,7 @@ function loadTrainingData() {
         });
 
         // 데이터가 충분하면 정규화 및 학습
-        const dataArray = Array.isArray(brain.data) ? brain.data : (brain.data.raw || []);
+        const dataArray = brain.data.training || [];
         if (dataArray.length >= 5) {
             brain.normalizeData();
             brain.train({ epochs: 20 }, () => {
@@ -498,7 +493,7 @@ function updateDataCount() {
         document.getElementById('data-count').innerText = '0';
         return;
     }
-    const dataArray = Array.isArray(brain.data) ? brain.data : (brain.data.raw || []);
+    const dataArray = brain.data.training || [];
     const countEl = document.getElementById('data-count');
     if (countEl) {
         countEl.innerText = dataArray.length;
@@ -529,7 +524,7 @@ function exportCSV() {
         return;
     }
 
-    const dataArray = Array.isArray(brain.data) ? brain.data : (brain.data.raw || []);
+    const dataArray = brain.data.training || [];
     if (dataArray.length === 0) {
         alert('No data to export.');
         return;
