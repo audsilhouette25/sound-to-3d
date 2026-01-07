@@ -395,6 +395,9 @@ function updateVisuals(loudness) {
 }
 
 function confirmTraining() {
+    console.log('confirmTraining called');
+    console.log('recordedX:', recordedX);
+
     const labels = {
         y1: parseFloat(document.getElementById('y1').value),
         y2: parseFloat(document.getElementById('y2').value),
@@ -402,6 +405,8 @@ function confirmTraining() {
         y4: parseFloat(document.getElementById('y4').value),
         shape: parseFloat(document.getElementById('shape-selector').value)
     };
+
+    console.log('labels:', labels);
 
     brain.addData({
         loudness: recordedX.loudness,
