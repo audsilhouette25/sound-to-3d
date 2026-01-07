@@ -242,8 +242,8 @@ function animate() {
             // 평상시에는 AI가 예측
             const dataArray = brain.data.training || [];
             if (dataArray.length >= 5) {
-                brain.predict(currentX, (err, res) => {
-                    if(!err) {
+                brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
+                    if(!err && res && res.length >= 5) {
                         targetY.y1 = res[0].value;
                         targetY.y2 = res[1].value;
                         targetY.y3 = res[2].value;
@@ -404,12 +404,10 @@ function confirmTraining() {
 
     console.log('labels:', labels);
 
-    brain.addData({
-        loudness: recordedX.loudness,
-        pitch: recordedX.pitch,
-        brightness: recordedX.brightness,
-        roughness: recordedX.roughness
-    }, labels);
+    brain.addData(
+        [recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness],
+        [labels.y1, labels.y2, labels.y3, labels.y4, labels.shape]
+    );
 
     console.log('brain.data.training after addData:', brain.data.training);
 
@@ -470,7 +468,9 @@ function loadTrainingData() {
 
         // 기존 데이터에 추가
         trainingData.data.forEach(item => {
-            brain.addData(item.xs, item.ys);
+            const xs = Array.isArray(item.xs) ? item.xs : [item.xs.loudness, item.xs.pitch, item.xs.brightness, item.xs.roughness];
+            const ys = Array.isArray(item.ys) ? item.ys : [item.ys.y1, item.ys.y2, item.ys.y3, item.ys.y4, item.ys.shape];
+            brain.addData(xs, ys);
         });
 
         // 데이터가 충분하면 정규화 및 학습
@@ -532,8 +532,10 @@ function exportCSV() {
 
     let csv = 'loudness,pitch,brightness,roughness,y1,y2,y3,y4,shape\n';
     dataArray.forEach(item => {
-        csv += `${item.xs.loudness},${item.xs.pitch},${item.xs.brightness},${item.xs.roughness},`;
-        csv += `${item.ys.y1},${item.ys.y2},${item.ys.y3},${item.ys.y4},${item.ys.shape}\n`;
+        const xs = Array.isArray(item.xs) ? item.xs : [item.xs.loudness, item.xs.pitch, item.xs.brightness, item.xs.roughness];
+        const ys = Array.isArray(item.ys) ? item.ys : [item.ys.y1, item.ys.y2, item.ys.y3, item.ys.y4, item.ys.shape];
+        csv += `${xs[0]},${xs[1]},${xs[2]},${xs[3]},`;
+        csv += `${ys[0]},${ys[1]},${ys[2]},${ys[3]},${ys[4]}\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
