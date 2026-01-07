@@ -107,19 +107,26 @@ async function initEngine() {
         debug: false
     });
 
-    console.log('Brain created, waiting for ready state...');
+    console.log('Brain created, checking initialization...');
+    console.log('Initial brain.data:', brain.data);
 
-    // ml5.js brain이 완전히 초기화될 때까지 대기
-    // requestAnimationFrame을 사용하여 다음 프레임까지 대기
-    requestAnimationFrame(() => {
-        setTimeout(() => {
-            console.log('Brain ready, loading training data...');
+    // ml5.js neuralNetwork는 생성 직후에는 brain.data가 undefined일 수 있음
+    // brain.data.training이 실제로 존재할 때까지 대기
+    const waitForBrainReady = () => {
+        if (brain.data && brain.data.training !== undefined) {
+            console.log('Brain is ready! brain.data.training exists');
             console.log('Brain state before load:', brain.data);
             loadTrainingData();
             console.log('Brain state after load:', brain.data);
             updateDataCount();
-        }, 100);
-    });
+        } else {
+            console.log('Brain not ready yet, waiting... brain.data:', brain.data);
+            setTimeout(waitForBrainReady, 50);
+        }
+    };
+
+    // 초기화 대기 시작
+    setTimeout(waitForBrainReady, 100);
 
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
