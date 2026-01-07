@@ -268,19 +268,91 @@ function updateVisuals(loudness) {
 
     const pos = currentMesh.geometry.attributes.position;
     const t = Date.now() * 0.001;
+    const shapeType = Math.round(currentY.shape);
+
     for (let i = 0; i < pos.count; i++) {
         const i3 = i * 3;
-        tempVec.set(originalVertices[i3], originalVertices[i3+1], originalVertices[i3+2]).normalize();
+        const ox = originalVertices[i3];
+        const oy = originalVertices[i3 + 1];
+        const oz = originalVertices[i3 + 2];
 
-        // 슬라이더(currentY)에 의한 형태 변형 + 실시간 소리(loudness)에 의한 진폭
-        const wave = Math.sin(tempVec.x * (5 + currentY.y4 * 25) + t) * currentY.y2 * 0.5;
-        const rough = (Math.sin(t * 10) * 0.1) * currentY.y3;
-        const dist = 1 + wave + rough + (loudness * 0.4);
+        tempVec.set(ox, oy, oz);
 
-        tempVec.multiplyScalar(dist);
+        // 형태별 고유한 변형 로직
+        let displacement = 0;
+
+        switch(shapeType) {
+            case SHAPES.SPHERE:
+                // 구: 방사형 파동
+                tempVec.normalize();
+                const sphereWave = Math.sin(tempVec.x * 3 + tempVec.y * 2 + t * (1 + currentY.y4 * 3)) * currentY.y2;
+                const sphereRough = (Math.random() - 0.5) * currentY.y3 * 0.1;
+                displacement = 1 + sphereWave * 0.3 + sphereRough + loudness * 0.3;
+                tempVec.multiplyScalar(displacement);
+                break;
+
+            case SHAPES.CUBE:
+                // 정육면체: 면 단위 펄스
+                const cubeWave = Math.sin((Math.abs(ox) + Math.abs(oy) + Math.abs(oz)) * 2 + t * 2) * currentY.y2;
+                const faceNoise = (Math.sin(ox * 10 + t) * Math.cos(oy * 10 + t)) * currentY.y3 * 0.1;
+                displacement = 1 + cubeWave * 0.2 + faceNoise + loudness * 0.25;
+                tempVec.multiplyScalar(displacement);
+                break;
+
+            case SHAPES.TORUS:
+                // 토러스: 회전 나선 파동
+                const angle = Math.atan2(oz, ox);
+                const torusWave = Math.sin(angle * (3 + currentY.y4 * 10) + t * 2) * currentY.y2;
+                const radialPulse = Math.sin(oy * 5 + t * 3) * currentY.y3 * 0.15;
+                const scale = 1 + (torusWave * 0.2 + radialPulse + loudness * 0.2);
+                tempVec.x = ox * scale;
+                tempVec.z = oz * scale;
+                tempVec.y = oy * (1 + torusWave * 0.3 + loudness * 0.15);
+                break;
+
+            case SHAPES.CONE:
+                // 원뿔: 높이에 따른 차등 변형
+                const heightFactor = (oy + 1) / 2; // 0~1 정규화
+                const coneWave = Math.sin(Math.atan2(oz, ox) * (4 + currentY.y4 * 8) + t) * currentY.y2;
+                const heightWave = Math.sin(oy * 3 + t * 2) * currentY.y3 * 0.2;
+                const coneScale = 1 + (coneWave * 0.25 + heightWave) * heightFactor + loudness * 0.3;
+                tempVec.x = ox * coneScale;
+                tempVec.z = oz * coneScale;
+                tempVec.y = oy * (1 + Math.sin(t) * currentY.y2 * 0.1 + loudness * 0.2);
+                break;
+
+            case SHAPES.CYLINDER:
+                // 원기둥: 세로 파동 + 회전 왜곡
+                const cylAngle = Math.atan2(oz, ox);
+                const cylWave = Math.sin(cylAngle * (5 + currentY.y4 * 10) + oy * 2 + t * 2) * currentY.y2;
+                const verticalWave = Math.sin(oy * 4 + t * 3) * currentY.y3 * 0.15;
+                const cylScale = 1 + cylWave * 0.25 + verticalWave + loudness * 0.25;
+                tempVec.x = ox * cylScale;
+                tempVec.z = oz * cylScale;
+                break;
+
+            case SHAPES.OCTAHEDRON:
+                // 팔면체: 꼭지점 기반 복잡한 변형
+                tempVec.normalize();
+                const octWave1 = Math.sin(tempVec.x * 5 + t) * Math.cos(tempVec.y * 5 + t);
+                const octWave2 = Math.sin(tempVec.z * 5 + t * 1.5) * currentY.y4;
+                const octRough = (Math.sin(t * 15) * 0.05) * currentY.y3;
+                displacement = 1.2 + octWave1 * currentY.y2 * 0.4 + octWave2 * 0.3 + octRough + loudness * 0.35;
+                tempVec.set(ox, oy, oz).normalize().multiplyScalar(displacement);
+                break;
+        }
+
         pos.setXYZ(i, tempVec.x, tempVec.y, tempVec.z);
     }
-    currentMesh.rotation.y += 0.005 + (currentY.y1 * 0.05);
+
+    // 회전 속도도 형태에 따라 다르게
+    const rotationSpeed = 0.005 + (currentY.y1 * 0.05);
+    currentMesh.rotation.y += rotationSpeed;
+
+    if (shapeType === SHAPES.TORUS || shapeType === SHAPES.CYLINDER) {
+        currentMesh.rotation.x += rotationSpeed * 0.3;
+    }
+
     pos.needsUpdate = true;
 }
 
