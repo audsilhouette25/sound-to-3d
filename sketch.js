@@ -146,7 +146,13 @@ async function initEngine() {
 
             loadTrainingData();
             console.log('Brain state after load:', brain.data);
-            updateDataCount();
+
+            // loadTrainingData 후 약간의 딜레이를 주고 updateDataCount 호출
+            // 이렇게 하면 데이터가 완전히 로드된 후 카운트가 업데이트됨
+            setTimeout(() => {
+                updateDataCount();
+                console.log('Data count updated after load');
+            }, 100);
         } else {
             console.log('Brain not ready yet, waiting... brain.data:', brain.data);
             setTimeout(waitForBrainReady, 50);
@@ -489,12 +495,21 @@ function confirmTraining() {
     console.log('Input array:', inputArray);
     console.log('Output array:', outputArray);
 
+    const beforeCount = brain.data.training ? brain.data.training.length : 0;
     brain.addData(inputArray, outputArray);
+    const afterCount = brain.data.training ? brain.data.training.length : 0;
 
     // addData 호출 후 상태 확인
     console.log('AFTER addData - brain.data:', brain.data);
     console.log('AFTER addData - brain.data.training:', brain.data.training);
-    console.log('AFTER addData - Data count:', brain.data.training ? brain.data.training.length : 0);
+    console.log('AFTER addData - Data count:', afterCount);
+
+    // CRITICAL: addData가 실패했는지 확인
+    if (afterCount === beforeCount) {
+        console.error('CRITICAL: brain.addData() failed! Count did not increase.');
+        alert('Failed to save training data. Brain may need re-initialization. Please refresh the page.');
+        return;
+    }
 
     // 학습 데이터 자동 저장
     saveTrainingData();
