@@ -90,7 +90,7 @@ function createShape(shapeType) {
 }
 
 async function initEngine() {
-    updateStatus('Initializing Audio Engine...', 'status-idle');
+    updateStatus('statusInit', 'status-idle');
 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -118,12 +118,17 @@ async function initEngine() {
     document.getElementById('save-load-zone').style.display = 'block';
     updateDataCount();
 
-    updateStatus('Ready - Microphone Active', 'status-idle');
+    updateStatus('statusActive', 'status-idle');
 }
 
 // 상태 업데이트 함수
-function updateStatus(message, className) {
+function updateStatus(messageKey, className) {
     const statusEl = document.getElementById('status');
+    const t = translations[currentLang];
+
+    // messageKey가 translations에 있으면 번역된 텍스트 사용
+    const message = t[messageKey] || messageKey;
+
     statusEl.innerText = message;
     statusEl.className = 'status-badge ' + className;
 }
@@ -163,11 +168,12 @@ async function startRecording() {
     }
 
     mediaRecorder.start();
-    document.getElementById('btn-main').innerText = "녹음 중단 (Stop)";
+    const t = translations[currentLang];
+    document.getElementById('btn-main').innerText = t.btnStop;
     document.getElementById('labeling-zone').style.display = "none";
     document.getElementById('btn-play').style.display = "none";
 
-    updateStatus('Recording...', 'status-recording');
+    updateStatus('statusRecording', 'status-recording');
 }
 
 function stopRecording() {
@@ -179,13 +185,14 @@ function stopRecording() {
         microphoneStream.getTracks().forEach(track => track.stop());
     }
 
-    document.getElementById('btn-main').innerText = "다시 녹음하기";
+    const t = translations[currentLang];
+    document.getElementById('btn-main').innerText = t.btnReRecord;
     document.getElementById('labeling-zone').style.display = "block";
     document.getElementById('btn-confirm').style.display = "block";
     document.getElementById('btn-play').style.display = "inline-block";
-    document.getElementById('btn-play').innerText = "▶ 녹음 재생";
+    document.getElementById('btn-play').innerText = t.btnPlay;
 
-    updateStatus('Review - Awaiting Labels', 'status-review');
+    updateStatus('statusReview', 'status-review');
 }
 
 function saveRecording() {
@@ -207,6 +214,8 @@ function saveRecording() {
 function togglePlayback() {
     if (!audioTag) return;
 
+    const t = translations[currentLang];
+
     if (audioTag.paused) {
         // 재생 시작
         if (sourceNode) sourceNode.disconnect();
@@ -215,11 +224,11 @@ function togglePlayback() {
         analyser.connect(audioCtx.destination);
 
         audioTag.play();
-        document.getElementById('btn-play').innerText = "⏸ 일시정지";
+        document.getElementById('btn-play').innerText = t.btnPause;
     } else {
         // 일시정지
         audioTag.pause();
-        document.getElementById('btn-play').innerText = "▶ 녹음 재생";
+        document.getElementById('btn-play').innerText = t.btnPlay;
     }
 }
 
@@ -407,7 +416,7 @@ function confirmTraining() {
 
     brain.normalizeData();
 
-    updateStatus('Training Neural Network...', 'status-recording');
+    updateStatus('statusTraining', 'status-recording');
 
     brain.train({ epochs: 20 }, () => {
         alert("Training complete! Data has been automatically saved.");
@@ -416,11 +425,12 @@ function confirmTraining() {
         // 재생 중지
         if(audioTag) audioTag.pause();
 
+        const t = translations[currentLang];
         document.getElementById('labeling-zone').style.display = "none";
-        document.getElementById('btn-main').innerText = "녹음 시작";
+        document.getElementById('btn-main').innerText = t.btnRecord;
         document.getElementById('btn-play').style.display = "none";
 
-        updateStatus('Ready - Microphone Active', 'status-idle');
+        updateStatus('statusActive', 'status-idle');
     });
 }
 
@@ -521,5 +531,122 @@ function onShapeChange() {
         const shapeValue = parseInt(document.getElementById('shape-selector').value);
         createShape(shapeValue);
         document.getElementById('shape-name').innerText = SHAPE_NAMES[shapeValue];
+    }
+}
+
+// 언어 전환
+let currentLang = 'en';
+
+const translations = {
+    en: {
+        langBtn: '한국어',
+        title: 'IML Experiment Panel',
+        btnEngine: 'Initialize Audio Engine',
+        btnRecord: 'Start Recording',
+        btnStop: 'Stop Recording',
+        btnReRecord: 'Re-record',
+        btnPlay: '▶ Play Recording',
+        btnPause: '⏸ Pause',
+        labelInstruction: 'Define visual characteristics of the recorded sound',
+        y1Left: 'Smooth', y1Right: 'Angular',
+        y2Left: 'Flat', y2Right: 'Sharp',
+        y3Left: 'Smooth', y3Right: 'Rough',
+        y4Left: 'Simple', y4Right: 'Complex',
+        btnConfirm: 'Confirm Training Data',
+        dataLabel: 'Training Data:',
+        samplesLabel: 'samples',
+        btnExport: 'Export Data (CSV)',
+        btnClear: 'Clear All Training Data',
+        statusReady: 'Ready - Click to Initialize Audio Engine',
+        statusInit: 'Initializing Audio Engine...',
+        statusActive: 'Ready - Microphone Active',
+        statusRecording: 'Recording...',
+        statusReview: 'Review - Awaiting Labels',
+        statusTraining: 'Training Neural Network...'
+    },
+    ko: {
+        langBtn: 'English',
+        title: 'IML 실험 패널',
+        btnEngine: '오디오 엔진 가동',
+        btnRecord: '녹음 시작',
+        btnStop: '녹음 중단 (Stop)',
+        btnReRecord: '다시 녹음하기',
+        btnPlay: '▶ 녹음 재생',
+        btnPause: '⏸ 일시정지',
+        labelInstruction: '방금 소리의 시각적 형질을 결정하세요',
+        y1Left: '둥근', y1Right: '각진',
+        y2Left: '평평', y2Right: '뾰족',
+        y3Left: '매끈', y3Right: '거침',
+        y4Left: '단순', y4Right: '복잡',
+        btnConfirm: '학습 데이터로 확정',
+        dataLabel: '학습 데이터:',
+        samplesLabel: '개',
+        btnExport: '데이터 내보내기 (CSV)',
+        btnClear: '모든 학습 데이터 삭제',
+        statusReady: '준비됨 - 엔진 가동 클릭',
+        statusInit: '엔진 초기화 중...',
+        statusActive: '대기 중 (녹음 가능)',
+        statusRecording: '녹음 중...',
+        statusReview: '리뷰 중 (라벨링 대기)',
+        statusTraining: 'AI 학습 중...'
+    }
+};
+
+function toggleLanguage() {
+    currentLang = currentLang === 'en' ? 'ko' : 'en';
+    const t = translations[currentLang];
+
+    document.getElementById('lang-toggle').innerText = t.langBtn;
+    document.getElementById('title').innerText = t.title;
+    document.getElementById('btn-engine').innerText = t.btnEngine;
+    document.getElementById('label-instruction').innerText = t.labelInstruction;
+
+    document.querySelector('.y1-left').innerText = t.y1Left;
+    document.querySelector('.y1-right').innerText = t.y1Right;
+    document.querySelector('.y2-left').innerText = t.y2Left;
+    document.querySelector('.y2-right').innerText = t.y2Right;
+    document.querySelector('.y3-left').innerText = t.y3Left;
+    document.querySelector('.y3-right').innerText = t.y3Right;
+    document.querySelector('.y4-left').innerText = t.y4Left;
+    document.querySelector('.y4-right').innerText = t.y4Right;
+
+    document.getElementById('btn-confirm').innerText = t.btnConfirm;
+    document.getElementById('data-label').innerText = t.dataLabel;
+    document.getElementById('samples-label').innerText = t.samplesLabel;
+    document.getElementById('btn-export').innerText = t.btnExport;
+    document.getElementById('btn-clear').innerText = t.btnClear;
+
+    // 상태에 따라 버튼 텍스트 업데이트
+    if (state === 'IDLE') {
+        document.getElementById('btn-main').innerText = t.btnRecord;
+    } else if (state === 'RECORDING') {
+        document.getElementById('btn-main').innerText = t.btnStop;
+    } else if (state === 'REVIEWING') {
+        document.getElementById('btn-main').innerText = t.btnReRecord;
+    }
+
+    // 현재 상태 메시지 업데이트
+    updateStatusText();
+}
+
+function updateStatusText() {
+    const t = translations[currentLang];
+    const statusEl = document.getElementById('status');
+    const currentClass = statusEl.className;
+
+    if (currentClass.includes('status-idle')) {
+        if (brain) {
+            statusEl.innerText = t.statusActive;
+        } else {
+            statusEl.innerText = t.statusReady;
+        }
+    } else if (currentClass.includes('status-recording')) {
+        if (statusEl.innerText.includes('Training') || statusEl.innerText.includes('학습')) {
+            statusEl.innerText = t.statusTraining;
+        } else {
+            statusEl.innerText = t.statusRecording;
+        }
+    } else if (currentClass.includes('status-review')) {
+        statusEl.innerText = t.statusReview;
     }
 }

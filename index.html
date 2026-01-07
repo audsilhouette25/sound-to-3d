@@ -27,16 +27,18 @@
     </style>
 </head>
 <body>
+    <button id="lang-toggle" onclick="toggleLanguage()" style="position: absolute; top: 20px; right: 20px; z-index: 200; padding: 8px 15px; background: #00ffcc; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 0.85em;">한국어</button>
+
     <div id="ui-layer">
-        <h3>IML 실험 패널</h3>
+        <h3 id="title">IML Experiment Panel</h3>
         <div id="status" class="status-badge status-idle">Ready - Click to Initialize Audio Engine</div>
         
-        <button id="btn-engine" onclick="initEngine()">1. 오디오 엔진 가동</button>
-        <button id="btn-main" onclick="handleRecord()" style="display:none;">녹음 시작</button>
-        <button id="btn-play" onclick="togglePlayback()" style="display:none; background:#0066ff; color:white; margin-top:5px;">▶ 녹음 재생</button>
+        <button id="btn-engine" onclick="initEngine()">Initialize Audio Engine</button>
+        <button id="btn-main" onclick="handleRecord()" style="display:none;">Start Recording</button>
+        <button id="btn-play" onclick="togglePlayback()" style="display:none; background:#0066ff; color:white; margin-top:5px;">▶ Play Recording</button>
 
         <div id="labeling-zone" class="slider-panel">
-            <p style="font-size: 0.8em; color: #00ffcc; text-align: center;">방금 소리의 시각적 형질을 결정하세요</p>
+            <p id="label-instruction" style="font-size: 0.8em; color: #00ffcc; text-align: center;">Define visual characteristics of the recorded sound</p>
 
             <div class="slider-group" style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #333;">
                 <div class="slider-header" style="margin-bottom: 8px;">
@@ -45,40 +47,40 @@
                 </div>
                 <input type="range" id="shape-selector" min="0" max="5" step="1" value="0" onchange="onShapeChange()">
                 <div style="position: relative; font-size: 0.65em; color: #666; margin-top: 3px; height: 15px;">
-                    <span style="position: absolute; left: 0%; transform: translateX(0%);">Sphere</span>
-                    <span style="position: absolute; left: 20%; transform: translateX(-50%);">Cube</span>
+                    <span style="position: absolute; left: 0%; transform: translateX(-5%);">Sphere</span>
+                    <span style="position: absolute; left: 20%; transform: translateX(-45%);">Cube</span>
                     <span style="position: absolute; left: 40%; transform: translateX(-50%);">Torus</span>
                     <span style="position: absolute; left: 60%; transform: translateX(-50%);">Cone</span>
-                    <span style="position: absolute; left: 80%; transform: translateX(-50%);">Cylinder</span>
-                    <span style="position: absolute; left: 100%; transform: translateX(-100%);">Octa</span>
+                    <span style="position: absolute; left: 80%; transform: translateX(-52%);">Cylinder</span>
+                    <span style="position: absolute; left: 100%; transform: translateX(-95%);">Octa</span>
                 </div>
             </div>
 
             <div class="slider-group">
-                <div class="slider-header"><span>둥근</span><span>y1: 각짐</span><span>각진</span></div>
+                <div class="slider-header"><span class="y1-left">Smooth</span><span>y1: Rotation</span><span class="y1-right">Angular</span></div>
                 <input type="range" id="y1" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span>평평</span><span>y2: 첨예도</span><span>뾰족</span></div>
+                <div class="slider-header"><span class="y2-left">Flat</span><span>y2: Sharpness</span><span class="y2-right">Sharp</span></div>
                 <input type="range" id="y2" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span>매끈</span><span>y3: 질감</span><span>거침</span></div>
+                <div class="slider-header"><span class="y3-left">Smooth</span><span>y3: Texture</span><span class="y3-right">Rough</span></div>
                 <input type="range" id="y3" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span>단순</span><span>y4: 밀도</span><span>복잡</span></div>
+                <div class="slider-header"><span class="y4-left">Simple</span><span>y4: Density</span><span class="y4-right">Complex</span></div>
                 <input type="range" id="y4" min="0" max="1" step="0.01" value="0.5">
             </div>
-            <button id="btn-confirm" onclick="confirmTraining()">학습 데이터로 확정</button>
+            <button id="btn-confirm" onclick="confirmTraining()">Confirm Training Data</button>
         </div>
         
         <div id="save-load-zone" style="margin-top:20px; padding-top:15px; border-top:1px solid #333; display:none;">
             <div style="text-align:center; font-size:0.9em; margin-bottom:10px; color:#00ffcc;">
-                Training Data: <span id="data-count">0</span> samples
+                <span id="data-label">Training Data:</span> <span id="data-count">0</span> <span id="samples-label">samples</span>
             </div>
-            <button onclick="exportCSV()" style="background:#222; color:#888; font-size:0.75em; padding:8px;">Export Data (CSV)</button>
-            <button onclick="clearAllData()" style="background:#441111; color:#ff6666; font-size:0.75em; padding:8px; margin-top:5px;">Clear All Training Data</button>
+            <button id="btn-export" onclick="exportCSV()" style="background:#222; color:#888; font-size:0.75em; padding:8px;">Export Data (CSV)</button>
+            <button id="btn-clear" onclick="clearAllData()" style="background:#441111; color:#ff6666; font-size:0.75em; padding:8px; margin-top:5px;">Clear All Training Data</button>
         </div>
     </div>
     <div id="three-container"></div>
