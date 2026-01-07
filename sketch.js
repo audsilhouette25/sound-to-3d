@@ -105,9 +105,10 @@ async function initEngine() {
     mediaRecorder.onstop = saveRecording;
 
     brain = ml5.neuralNetwork({
-        inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
-        outputs: ['y1', 'y2', 'y3', 'y4', 'shape'],
-        task: 'regression', debug: true
+        inputs: 4,
+        outputs: 5,
+        task: 'regression',
+        debug: true
     });
 
     // 저장된 학습 데이터 불러오기
@@ -507,9 +508,10 @@ function clearAllData() {
 
         // brain 재생성
         brain = ml5.neuralNetwork({
-            inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
-            outputs: ['y1', 'y2', 'y3', 'y4', 'shape'],
-            task: 'regression', debug: true
+            inputs: 4,
+            outputs: 5,
+            task: 'regression',
+            debug: true
         });
 
         updateDataCount();
