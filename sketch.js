@@ -421,13 +421,23 @@ function confirmTraining() {
 
     console.log('labels:', labels);
 
-    brain.addData(
-        [recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness],
-        [labels.y1, labels.y2, labels.y3, labels.y4, labels.shape]
-    );
+    // addData 호출 전 상태 확인
+    console.log('BEFORE addData - brain:', brain);
+    console.log('BEFORE addData - brain.data:', brain.data);
+    console.log('BEFORE addData - brain.data.training:', brain.data ? brain.data.training : 'undefined');
 
-    console.log('brain.data.training after addData:', brain.data.training);
-    console.log('Data count:', brain.data.training.length);
+    const inputArray = [recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness];
+    const outputArray = [labels.y1, labels.y2, labels.y3, labels.y4, labels.shape];
+
+    console.log('Input array:', inputArray);
+    console.log('Output array:', outputArray);
+
+    brain.addData(inputArray, outputArray);
+
+    // addData 호출 후 상태 확인
+    console.log('AFTER addData - brain.data:', brain.data);
+    console.log('AFTER addData - brain.data.training:', brain.data.training);
+    console.log('AFTER addData - Data count:', brain.data.training ? brain.data.training.length : 0);
 
     // 학습 데이터 자동 저장
     saveTrainingData();
