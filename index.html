@@ -9,6 +9,7 @@
     <style>
         body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
         #ui-layer { position: absolute; top: 20px; left: 20px; width: 320px; z-index: 100; background: rgba(20,20,20,0.95); padding: 25px; border-radius: 15px; border: 1px solid #444; }
+        #lang-toggle { position: absolute; top: 25px; right: 25px; z-index: 101; padding: 6px 12px; background: #00ffcc; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 0.75em; width: auto; }
         .status-badge { padding: 5px 10px; border-radius: 4px; font-size: 0.8em; font-weight: bold; margin-bottom: 15px; text-align: center; }
         .status-idle { background: #444; }
         .status-recording { background: #ff3366; animation: blink 1s infinite; }
@@ -27,9 +28,8 @@
     </style>
 </head>
 <body>
-    <button id="lang-toggle" onclick="toggleLanguage()" style="position: absolute; top: 20px; right: 20px; z-index: 200; padding: 8px 15px; background: #00ffcc; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 0.85em;">한국어</button>
-
     <div id="ui-layer">
+        <button id="lang-toggle" onclick="toggleLanguage()">한국어</button>
         <h3 id="title">IML Experiment Panel</h3>
         <div id="status" class="status-badge status-idle">Ready - Click to Initialize Audio Engine</div>
         
