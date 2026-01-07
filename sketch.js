@@ -110,11 +110,16 @@ async function initEngine() {
     console.log('Brain created, waiting for ready state...');
 
     // ml5.js brain이 완전히 초기화될 때까지 대기
-    setTimeout(() => {
-        console.log('Brain ready, loading training data...');
-        loadTrainingData();
-        updateDataCount();
-    }, 500); // 100ms → 500ms로 증가
+    // requestAnimationFrame을 사용하여 다음 프레임까지 대기
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            console.log('Brain ready, loading training data...');
+            console.log('Brain state before load:', brain.data);
+            loadTrainingData();
+            console.log('Brain state after load:', brain.data);
+            updateDataCount();
+        }, 100);
+    });
 
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
@@ -523,22 +528,34 @@ function loadTrainingData() {
         }
 
         console.log('학습 데이터 불러오는 중:', trainingData.data.length, '개');
+        console.log('brain.data before forEach:', brain.data);
 
         // 기존 데이터에 추가
-        trainingData.data.forEach(item => {
-            if (!item || !item.xs || !item.ys) return; // 잘못된 항목 건너뛰기
+        let addedCount = 0;
+        trainingData.data.forEach((item, index) => {
+            if (!item || !item.xs || !item.ys) {
+                console.warn(`Skipping invalid item at index ${index}`);
+                return;
+            }
 
             const xs = Array.isArray(item.xs) ? item.xs : [item.xs.loudness, item.xs.pitch, item.xs.brightness, item.xs.roughness];
             const ys = Array.isArray(item.ys) ? item.ys : [item.ys.y1, item.ys.y2, item.ys.y3, item.ys.y4, item.ys.shape];
+
+            console.log(`Adding item ${index}:`, { xs, ys });
             brain.addData(xs, ys);
+            addedCount++;
+
+            console.log(`After adding item ${index}, brain.data.training length:`, brain.data.training ? brain.data.training.length : 'undefined');
         });
 
         // 데이터 불러오기만 하고 자동 학습은 하지 않음
         const dataArray = brain.data.training || [];
-        console.log(`Loaded ${dataArray.length} samples from localStorage`);
+        console.log(`Loaded ${dataArray.length} samples from localStorage (added: ${addedCount})`);
 
         if (dataArray.length > 0) {
             console.log('데이터 불러오기 완료. 새 데이터 추가 후 학습이 진행됩니다.');
+        } else if (addedCount > 0) {
+            console.error(`WARNING: Added ${addedCount} items but brain.data.training is still empty!`);
         }
     } catch (e) {
         console.error('데이터 불러오기 실패:', e);
