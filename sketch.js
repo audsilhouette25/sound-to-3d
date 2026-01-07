@@ -289,20 +289,17 @@ function animate() {
             targetY.y3 = parseFloat(document.getElementById('y3').value);
             targetY.y4 = parseFloat(document.getElementById('y4').value);
             targetY.shape = parseFloat(document.getElementById('shape-selector').value);
-        } else if (brain && brain.data) {
-            // 평상시에는 AI가 예측
-            const dataArray = brain.data.training || [];
-            if (dataArray.length >= 5) {
-                brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
-                    if(!err && res && res.length >= 5) {
-                        targetY.y1 = res[0].value;
-                        targetY.y2 = res[1].value;
-                        targetY.y3 = res[2].value;
-                        targetY.y4 = res[3].value;
-                        targetY.shape = res[4].value;
-                    }
-                });
-            }
+        } else if (brain && customTrainingData.length >= 5) {
+            // 평상시에는 AI가 예측 (customTrainingData 기준으로 체크)
+            brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
+                if(!err && res && res.length >= 5) {
+                    targetY.y1 = res[0].value;
+                    targetY.y2 = res[1].value;
+                    targetY.y3 = res[2].value;
+                    targetY.y4 = res[3].value;
+                    targetY.shape = res[4].value;
+                }
+            });
         }
 
         // 시각화 수치 부드럽게 전이
@@ -506,9 +503,7 @@ function confirmTraining() {
     console.log('  brain.data.training is Array?', Array.isArray(brain.data.training));
     console.log('  brain.data.training.length:', brain.data.training.length);
 
-    // ml5.js를 우회하고 우리만의 저장소 사용
-    console.log('Adding to custom training data...');
-
+    // customTrainingData에 저장
     const dataItem = {
         xs: [...inputArray],
         ys: [...outputArray]
@@ -517,44 +512,61 @@ function confirmTraining() {
     customTrainingData.push(dataItem);
     console.log(`✓ Added to customTrainingData (${customTrainingData.length} total)`);
 
-    // brain.addData도 시도 (예측을 위해)
-    try {
-        brain.addData(inputArray, outputArray);
-        console.log('Also added to brain (for predictions)');
-    } catch (err) {
-        console.warn('brain.addData failed, but data saved in customTrainingData:', err);
-    }
-
-    const actualCount = customTrainingData.length;
-
     // 학습 데이터 자동 저장
     saveTrainingData();
     updateDataCount();
 
+    const actualCount = customTrainingData.length;
     console.log(`Successfully saved! Total samples: ${actualCount}`);
 
-    // 데이터가 2개 이상이면 정규화, 1개는 정규화 없이 학습
-    if (actualCount >= 2) {
-        brain.normalizeData();
-    }
-
-    updateStatus('statusTraining', 'status-recording');
-
-    brain.train({ epochs: 20 }, () => {
-        console.log('Training complete!');
-        alert(`✓ Training Complete!\n\nSaved ${actualCount} sample(s) to storage.\nModel is ready for predictions.`);
-        state = 'IDLE';
-
-        // 재생 중지
-        if(audioTag) audioTag.pause();
-
-        const t = translations[currentLang];
-        document.getElementById('labeling-zone').style.display = "none";
-        document.getElementById('btn-main').innerText = t.btnRecord;
-        document.getElementById('btn-play').style.display = "none";
-
-        updateStatus('statusActive', 'status-idle');
+    // brain을 새로 만들고 모든 customTrainingData를 다시 추가
+    console.log('Rebuilding brain with all training data...');
+    brain = ml5.neuralNetwork({
+        inputs: 4,
+        outputs: 5,
+        task: 'regression',
+        debug: false
     });
+
+    // brain 초기화 대기 후 데이터 추가 및 학습
+    const waitAndTrain = () => {
+        if (brain.data && Array.isArray(brain.data.training)) {
+            console.log('Brain ready, adding all training data...');
+
+            // customTrainingData의 모든 데이터를 brain에 추가
+            for (let i = 0; i < customTrainingData.length; i++) {
+                brain.addData(customTrainingData[i].xs, customTrainingData[i].ys);
+            }
+
+            console.log(`Added ${customTrainingData.length} samples to brain for training`);
+
+            // 정규화 및 학습
+            if (customTrainingData.length >= 2) {
+                brain.normalizeData();
+            }
+
+            updateStatus('statusTraining', 'status-recording');
+
+            brain.train({ epochs: 20 }, () => {
+                console.log('Training complete!');
+                alert(`✓ Training Complete!\n\nSaved ${actualCount} sample(s) to storage.\nModel is ready for predictions.`);
+                state = 'IDLE';
+
+                if(audioTag) audioTag.pause();
+
+                const t = translations[currentLang];
+                document.getElementById('labeling-zone').style.display = "none";
+                document.getElementById('btn-main').innerText = t.btnRecord;
+                document.getElementById('btn-play').style.display = "none";
+
+                updateStatus('statusActive', 'status-idle');
+            });
+        } else {
+            setTimeout(waitAndTrain, 50);
+        }
+    };
+
+    waitAndTrain();
 }
 
 // 학습 데이터를 localStorage에 저장 (customTrainingData 사용)
@@ -619,16 +631,23 @@ function loadTrainingData() {
 
             if (valid) {
                 customTrainingData.push(item);
-                // brain에도 추가 시도
-                try {
-                    brain.addData(item.xs, item.ys);
-                } catch (err) {
-                    // 무시 - customTrainingData에는 저장됨
-                }
             }
         }
 
-        console.log(`✓ Loaded ${customTrainingData.length} samples`);
+        console.log(`✓ Loaded ${customTrainingData.length} samples into customTrainingData`);
+
+        // customTrainingData를 brain에 동기화 (학습 후 예측을 위해)
+        if (customTrainingData.length > 0) {
+            console.log('Syncing customTrainingData to brain...');
+            for (let i = 0; i < customTrainingData.length; i++) {
+                try {
+                    brain.addData(customTrainingData[i].xs, customTrainingData[i].ys);
+                } catch (err) {
+                    // 실패해도 계속 진행 - customTrainingData에 있으면 됨
+                }
+            }
+            console.log('Brain sync attempt complete');
+        }
     } catch (e) {
         console.error('Load failed:', e);
         localStorage.removeItem('soundTo3D_trainingData');
@@ -668,11 +687,15 @@ function clearAllData() {
 function emergencyReset() {
     console.log('=== EMERGENCY RESET ===');
 
-    // 모든 localStorage 항목 삭제
+    // localStorage 삭제
     localStorage.clear();
     console.log('✓ All localStorage cleared');
 
-    // brain 완전 재생성
+    // customTrainingData 초기화
+    customTrainingData = [];
+    console.log('✓ customTrainingData cleared');
+
+    // brain 재생성
     if (typeof ml5 !== 'undefined') {
         brain = ml5.neuralNetwork({
             inputs: 4,
@@ -682,11 +705,10 @@ function emergencyReset() {
         });
         console.log('✓ Brain recreated');
 
-        // brain 초기화 대기
         const waitAndUpdate = () => {
             if (brain.data && Array.isArray(brain.data.training)) {
                 updateDataCount();
-                console.log('✓ Brain ready, count updated');
+                console.log('✓ Emergency reset complete');
                 alert('Emergency reset complete. Everything has been reset.');
             } else {
                 setTimeout(waitAndUpdate, 100);
@@ -694,32 +716,26 @@ function emergencyReset() {
         };
         setTimeout(waitAndUpdate, 100);
     } else {
-        console.log('ml5 not available, just clearing localStorage');
+        updateDataCount();
         alert('Emergency reset complete. Please reload the page.');
     }
 }
 
-// CSV로 데이터 내보내기
+// CSV로 데이터 내보내기 (customTrainingData 사용)
 function exportCSV() {
-    if (!brain || !brain.data || !brain.data.training) {
-        alert('No data to export.');
-        return;
-    }
-
-    const dataArray = brain.data.training;
-    if (dataArray.length === 0) {
+    if (customTrainingData.length === 0) {
         alert('No data to export.');
         return;
     }
 
     let csv = 'loudness,pitch,brightness,roughness,y1,y2,y3,y4,shape\n';
 
-    for (let i = 0; i < dataArray.length; i++) {
-        const item = dataArray[i];
+    for (let i = 0; i < customTrainingData.length; i++) {
+        const item = customTrainingData[i];
         if (!item || !item.xs || !item.ys) continue;
 
-        const xs = Array.isArray(item.xs) ? item.xs : Object.values(item.xs);
-        const ys = Array.isArray(item.ys) ? item.ys : Object.values(item.ys);
+        const xs = item.xs;
+        const ys = item.ys;
 
         if (xs.length === 4 && ys.length === 5) {
             csv += `${xs[0]},${xs[1]},${xs[2]},${xs[3]},`;
