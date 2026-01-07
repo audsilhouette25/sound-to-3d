@@ -516,20 +516,12 @@ function loadTrainingData() {
             brain.addData(xs, ys);
         });
 
-        // 데이터가 있으면 학습 진행
+        // 데이터 불러오기만 하고 자동 학습은 하지 않음
         const dataArray = brain.data.training || [];
         console.log(`Loaded ${dataArray.length} samples from localStorage`);
 
-        if (dataArray.length >= 1) {
-            // 2개 이상이면 정규화
-            if (dataArray.length >= 2) {
-                brain.normalizeData();
-            }
-
-            brain.train({ epochs: 20 }, () => {
-                console.log('기존 학습 데이터로 재학습 완료!');
-                alert(`Loaded ${dataArray.length} training sample(s) from previous session.\nModel is ready for predictions!`);
-            });
+        if (dataArray.length > 0) {
+            console.log('데이터 불러오기 완료. 새 데이터 추가 후 학습이 진행됩니다.');
         }
     } catch (e) {
         console.error('데이터 불러오기 실패:', e);
