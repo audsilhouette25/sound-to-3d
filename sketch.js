@@ -108,7 +108,7 @@ async function initEngine() {
         inputs: 4,
         outputs: 5,
         task: 'regression',
-        debug: true
+        debug: false
     });
 
     // 저장된 학습 데이터 불러오기
@@ -212,10 +212,14 @@ function saveRecording() {
     audioTag.loop = true;
 
     // 녹음된 평균값 저장 (학습용)
-    recordedX.loudness /= recordedX.count;
-    recordedX.pitch /= recordedX.count;
-    recordedX.brightness /= recordedX.count;
-    recordedX.roughness /= recordedX.count;
+    if (recordedX.count > 0) {
+        recordedX.loudness /= recordedX.count;
+        recordedX.pitch /= recordedX.count;
+        recordedX.brightness /= recordedX.count;
+        recordedX.roughness /= recordedX.count;
+    }
+
+    console.log('saveRecording - recordedX after processing:', recordedX);
 }
 
 // 녹음 재생/일시정지 토글
@@ -409,6 +413,17 @@ function confirmTraining() {
     console.log('confirmTraining called');
     console.log('recordedX:', recordedX);
 
+    // recordedX 검증
+    if (recordedX.count === 0 ||
+        isNaN(recordedX.loudness) ||
+        isNaN(recordedX.pitch) ||
+        isNaN(recordedX.brightness) ||
+        isNaN(recordedX.roughness)) {
+        alert('Recording data is invalid. Please record again.');
+        console.error('Invalid recordedX data:', recordedX);
+        return;
+    }
+
     const labels = {
         y1: parseFloat(document.getElementById('y1').value),
         y2: parseFloat(document.getElementById('y2').value),
@@ -425,6 +440,7 @@ function confirmTraining() {
     );
 
     console.log('brain.data.training after addData:', brain.data.training);
+    console.log('Data count:', brain.data.training.length);
 
     // 학습 데이터 자동 저장
     saveTrainingData();
@@ -537,7 +553,7 @@ function clearAllData() {
             inputs: 4,
             outputs: 5,
             task: 'regression',
-            debug: true
+            debug: false
         });
 
         updateDataCount();
