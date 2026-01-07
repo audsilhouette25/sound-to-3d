@@ -20,7 +20,7 @@
 
         button { width: 100%; padding: 12px; margin-top: 8px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; }
         #btn-main { background: #ff3366; color: white; }
-        #btn-confirm { background: #00ffcc; color: black; display: none; }
+        #btn-confirm { background: #00ffcc; color: black; }
         
         .slider-panel { margin-top: 20px; padding-top: 20px; border-top: 1px solid #333; display: none; }
         .slider-group { margin-bottom: 15px; }
@@ -76,7 +76,7 @@
                 <div class="slider-header"><span class="y4-left">Simple</span><span>y4: Density</span><span class="y4-right">Complex</span></div>
                 <input type="range" id="y4" min="0" max="1" step="0.01" value="0.5">
             </div>
-            <button id="btn-confirm" onclick="confirmTraining()">Confirm Training Data</button>
+            <button id="btn-confirm" onclick="confirmTraining()" style="display:none;">Confirm Training Data</button>
         </div>
         
         <div id="save-load-zone" style="margin-top:20px; padding-top:15px; border-top:1px solid #333; display:none;">
