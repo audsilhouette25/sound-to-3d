@@ -107,54 +107,33 @@ async function initEngine() {
         debug: false
     });
 
-    console.log('Brain created, checking initialization...');
-    console.log('Initial brain.data:', brain.data);
+    console.log('Brain created, waiting for initialization...');
 
     // ml5.js neuralNetwork는 생성 직후에는 brain.data가 undefined일 수 있음
-    // brain.data.training이 실제로 존재할 때까지 대기
+    // brain.data.training이 실제로 존재할 때까지 대기 (최대 10초)
+    let retryCount = 0;
+    const maxRetries = 200; // 50ms * 200 = 10초
+
     const waitForBrainReady = () => {
-        if (brain.data && brain.data.training !== undefined) {
-            console.log('Brain is ready! brain.data.training exists');
-            console.log('brain.data.training type:', typeof brain.data.training);
-            console.log('brain.data.training is Array?', Array.isArray(brain.data.training));
-            console.log('Brain state before load:', brain.data);
+        retryCount++;
 
-            // 테스트: 더미 데이터 추가해서 addData가 작동하는지 확인
-            const testLength = brain.data.training.length;
-            brain.addData([1, 2, 3, 4], [0.5, 0.5, 0.5, 0.5, 0]);
-            const afterTestLength = brain.data.training.length;
-            console.log(`Test addData: before=${testLength}, after=${afterTestLength}, success=${afterTestLength > testLength}`);
+        if (brain.data && Array.isArray(brain.data.training)) {
+            console.log('✓ Brain initialized successfully');
+            console.log('brain.data.training length:', brain.data.training.length);
 
-            if (afterTestLength === testLength) {
-                console.error('CRITICAL: brain.addData() is NOT working! Brain may be corrupted.');
-                console.log('Recreating brain...');
-                brain = ml5.neuralNetwork({
-                    inputs: 4,
-                    outputs: 5,
-                    task: 'regression',
-                    debug: false
-                });
-                setTimeout(waitForBrainReady, 100);
-                return;
-            }
-
-            // 테스트 데이터 제거 (pop)
-            if (brain.data.training.length > 0) {
-                brain.data.training.pop();
-                console.log('Test data removed');
-            }
-
+            // 저장된 학습 데이터 불러오기
             loadTrainingData();
-            console.log('Brain state after load:', brain.data);
 
-            // loadTrainingData 후 약간의 딜레이를 주고 updateDataCount 호출
-            // 이렇게 하면 데이터가 완전히 로드된 후 카운트가 업데이트됨
-            setTimeout(() => {
-                updateDataCount();
-                console.log('Data count updated after load');
-            }, 100);
+            // 데이터 카운트 업데이트
+            updateDataCount();
+
+            const finalCount = brain.data.training ? brain.data.training.length : 0;
+            console.log(`Initialization complete. Loaded ${finalCount} training samples.`);
+        } else if (retryCount >= maxRetries) {
+            console.error('CRITICAL: Brain initialization timeout after 10 seconds');
+            alert('Failed to initialize neural network. Please refresh the page.');
         } else {
-            console.log('Brain not ready yet, waiting... brain.data:', brain.data);
+            // 아직 초기화 안됨, 계속 대기
             setTimeout(waitForBrainReady, 50);
         }
     };
@@ -460,17 +439,23 @@ function updateVisuals(loudness) {
 }
 
 function confirmTraining() {
-    console.log('confirmTraining called');
-    console.log('recordedX:', recordedX);
+    console.log('=== Confirming training data ===');
 
     // recordedX 검증
-    if (recordedX.count === 0 ||
+    if (!recordedX || recordedX.count === 0 ||
         isNaN(recordedX.loudness) ||
         isNaN(recordedX.pitch) ||
         isNaN(recordedX.brightness) ||
         isNaN(recordedX.roughness)) {
         alert('Recording data is invalid. Please record again.');
-        console.error('Invalid recordedX data:', recordedX);
+        console.error('Invalid recordedX:', recordedX);
+        return;
+    }
+
+    // brain 상태 확인
+    if (!brain || !brain.data || !Array.isArray(brain.data.training)) {
+        console.error('CRITICAL: Brain not initialized properly');
+        alert('Neural network not ready. Please refresh the page and try again.');
         return;
     }
 
@@ -482,34 +467,23 @@ function confirmTraining() {
         shape: parseFloat(document.getElementById('shape-selector').value)
     };
 
-    console.log('labels:', labels);
-
-    // addData 호출 전 상태 확인
-    console.log('BEFORE addData - brain:', brain);
-    console.log('BEFORE addData - brain.data:', brain.data);
-    console.log('BEFORE addData - brain.data.training:', brain.data ? brain.data.training : 'undefined');
-
     const inputArray = [recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness];
     const outputArray = [labels.y1, labels.y2, labels.y3, labels.y4, labels.shape];
 
-    console.log('Input array:', inputArray);
-    console.log('Output array:', outputArray);
+    console.log('Adding training sample:', { input: inputArray, output: outputArray });
 
-    const beforeCount = brain.data.training ? brain.data.training.length : 0;
+    const beforeCount = brain.data.training.length;
     brain.addData(inputArray, outputArray);
-    const afterCount = brain.data.training ? brain.data.training.length : 0;
+    const afterCount = brain.data.training.length;
 
-    // addData 호출 후 상태 확인
-    console.log('AFTER addData - brain.data:', brain.data);
-    console.log('AFTER addData - brain.data.training:', brain.data.training);
-    console.log('AFTER addData - Data count:', afterCount);
-
-    // CRITICAL: addData가 실패했는지 확인
-    if (afterCount === beforeCount) {
-        console.error('CRITICAL: brain.addData() failed! Count did not increase.');
-        alert('Failed to save training data. Brain may need re-initialization. Please refresh the page.');
+    // addData 성공 여부 확인
+    if (afterCount <= beforeCount) {
+        console.error('CRITICAL: brain.addData() failed!');
+        alert('Failed to save training data. Please refresh the page and try again.');
         return;
     }
+
+    console.log(`✓ Data added successfully (${beforeCount} → ${afterCount})`);
 
     // 학습 데이터 자동 저장
     saveTrainingData();
@@ -567,6 +541,7 @@ function loadTrainingData() {
     const saved = localStorage.getItem('soundTo3D_trainingData');
     if (!saved) {
         console.log('저장된 학습 데이터 없음');
+        // 데이터가 없어도 카운트는 0으로 표시되도록 보장
         return;
     }
 
@@ -580,11 +555,19 @@ function loadTrainingData() {
             return;
         }
 
+        if (trainingData.data.length === 0) {
+            console.log('저장된 데이터는 있지만 비어있음');
+            return;
+        }
+
         console.log('학습 데이터 불러오는 중:', trainingData.data.length, '개');
         console.log('brain.data before forEach:', brain.data);
+        console.log('brain.data.training initial length:', brain.data.training ? brain.data.training.length : 0);
 
         // 기존 데이터에 추가
+        const beforeCount = brain.data.training ? brain.data.training.length : 0;
         let addedCount = 0;
+
         trainingData.data.forEach((item, index) => {
             if (!item || !item.xs || !item.ys) {
                 console.warn(`Skipping invalid item at index ${index}`);
@@ -595,20 +578,25 @@ function loadTrainingData() {
             const ys = Array.isArray(item.ys) ? item.ys : [item.ys.y1, item.ys.y2, item.ys.y3, item.ys.y4, item.ys.shape];
 
             console.log(`Adding item ${index}:`, { xs, ys });
+            const beforeAdd = brain.data.training.length;
             brain.addData(xs, ys);
-            addedCount++;
+            const afterAdd = brain.data.training.length;
 
-            console.log(`After adding item ${index}, brain.data.training length:`, brain.data.training ? brain.data.training.length : 'undefined');
+            if (afterAdd > beforeAdd) {
+                addedCount++;
+            } else {
+                console.error(`Failed to add item ${index} to brain`);
+            }
         });
 
         // 데이터 불러오기만 하고 자동 학습은 하지 않음
-        const dataArray = brain.data.training || [];
-        console.log(`Loaded ${dataArray.length} samples from localStorage (added: ${addedCount})`);
+        const afterCount = brain.data.training ? brain.data.training.length : 0;
+        console.log(`Loaded ${afterCount} samples from localStorage (added: ${addedCount}, before: ${beforeCount})`);
 
-        if (dataArray.length > 0) {
+        if (afterCount > beforeCount) {
             console.log('데이터 불러오기 완료. 새 데이터 추가 후 학습이 진행됩니다.');
         } else if (addedCount > 0) {
-            console.error(`WARNING: Added ${addedCount} items but brain.data.training is still empty!`);
+            console.error(`WARNING: Tried to add ${addedCount} items but brain.data.training count didn't increase!`);
         }
     } catch (e) {
         console.error('데이터 불러오기 실패:', e);
