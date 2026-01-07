@@ -89,10 +89,12 @@ function createShape(shapeType) {
 }
 
 async function initEngine() {
+    updateStatus('엔진 초기화 중...', 'status-idle');
+
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     microphone = audioCtx.createMediaStreamSource(stream);
-    
+
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
     microphone.connect(analyser); // 기본적으로 마이크를 분석기에 연결
@@ -114,6 +116,15 @@ async function initEngine() {
     document.getElementById('btn-main').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
     updateDataCount();
+
+    updateStatus('대기 중 (녹음 가능)', 'status-idle');
+}
+
+// 상태 업데이트 함수
+function updateStatus(message, className) {
+    const statusEl = document.getElementById('status');
+    statusEl.innerText = message;
+    statusEl.className = 'status-badge ' + className;
 }
 
 function handleRecord() {
@@ -147,6 +158,8 @@ function startRecording() {
     document.getElementById('btn-main').innerText = "녹음 중단 (Stop)";
     document.getElementById('labeling-zone').style.display = "none";
     document.getElementById('btn-play').style.display = "none";
+
+    updateStatus('🔴 녹음 중...', 'status-recording');
 }
 
 function stopRecording() {
@@ -157,6 +170,8 @@ function stopRecording() {
     document.getElementById('btn-confirm').style.display = "block";
     document.getElementById('btn-play').style.display = "inline-block";
     document.getElementById('btn-play').innerText = "▶ 녹음 재생";
+
+    updateStatus('✏️ 리뷰 중 (라벨링 대기)', 'status-review');
 }
 
 function saveRecording() {
@@ -377,6 +392,9 @@ function confirmTraining() {
     updateDataCount();
 
     brain.normalizeData();
+
+    updateStatus('🧠 AI 학습 중...', 'status-recording');
+
     brain.train({ epochs: 20 }, () => {
         alert("학습 완료! 데이터가 자동 저장되었습니다.");
         state = 'IDLE';
@@ -387,6 +405,8 @@ function confirmTraining() {
         document.getElementById('labeling-zone').style.display = "none";
         document.getElementById('btn-main').innerText = "녹음 시작";
         document.getElementById('btn-play').style.display = "none";
+
+        updateStatus('대기 중 (녹음 가능)', 'status-idle');
     });
 }
 
