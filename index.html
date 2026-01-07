@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>IML Research - Record & Label</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+    <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        #ui-layer { position: absolute; top: 20px; left: 20px; width: 320px; z-index: 100; background: rgba(20,20,20,0.95); padding: 25px; border-radius: 15px; border: 1px solid #444; }
+        .status-badge { padding: 5px 10px; border-radius: 4px; font-size: 0.8em; font-weight: bold; margin-bottom: 15px; text-align: center; }
+        .status-idle { background: #444; }
+        .status-recording { background: #ff3366; animation: blink 1s infinite; }
+        .status-review { background: #0077ff; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+
+        button { width: 100%; padding: 12px; margin-top: 8px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; }
+        #btn-main { background: #ff3366; color: white; }
+        #btn-confirm { background: #00ffcc; color: black; display: none; }
+        
+        .slider-panel { margin-top: 20px; padding-top: 20px; border-top: 1px solid #333; display: none; }
+        .slider-group { margin-bottom: 15px; }
+        .slider-header { font-size: 0.8em; color: #ccc; display: flex; justify-content: space-between; }
+        input[type=range] { width: 100%; margin-top: 5px; accent-color: #00ffcc; }
+        #three-container { width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="ui-layer">
+        <h3>IML 실험 패널</h3>
+        <div id="status" class="status-badge status-idle">준비됨 (엔진 가동 전)</div>
+        
+        <button id="btn-engine" onclick="initEngine()">1. 오디오 엔진 가동</button>
+        <button id="btn-main" onclick="handleRecord()" style="display:none;">녹음 시작</button>
+
+        <div id="labeling-zone" class="slider-panel">
+            <p style="font-size: 0.8em; color: #00ffcc; text-align: center;">방금 소리의 시각적 형질을 결정하세요</p>
+            <div class="slider-group">
+                <div class="slider-header"><span>둥근</span><span>y1: 각짐</span><span>각진</span></div>
+                <input type="range" id="y1" min="0" max="1" step="0.01" value="0.5">
+            </div>
+            <div class="slider-group">
+                <div class="slider-header"><span>평평</span><span>y2: 첨예도</span><span>뾰족</span></div>
+                <input type="range" id="y2" min="0" max="1" step="0.01" value="0.5">
+            </div>
+            <div class="slider-group">
+                <div class="slider-header"><span>매끈</span><span>y3: 질감</span><span>거침</span></div>
+                <input type="range" id="y3" min="0" max="1" step="0.01" value="0.5">
+            </div>
+            <div class="slider-group">
+                <div class="slider-header"><span>단순</span><span>y4: 밀도</span><span>복잡</span></div>
+                <input type="range" id="y4" min="0" max="1" step="0.01" value="0.5">
+            </div>
+            <button id="btn-confirm" onclick="confirmTraining()">학습 데이터로 확정</button>
+        </div>
+        
+        <button onclick="exportCSV()" style="margin-top:20px; background:#222; color:#888; font-size:0.7em;">데이터 추출 (.CSV)</button>
+    </div>
+    <div id="three-container"></div>
+    <script src="sketch.js"></script>
+</body>
+</html>
