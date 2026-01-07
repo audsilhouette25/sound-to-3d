@@ -1,17 +1,29 @@
 let audioCtx, analyser, microphone, mediaRecorder;
 let audioChunks = [];
-let audioBlob, audioUrl, audioTag, sourceNode; // sourceNode 추가
+let audioBlob, audioUrl, audioTag, sourceNode;
 let brain;
-let scene, camera, renderer, sphere, originalVertices;
+let scene, camera, renderer, currentMesh, originalVertices;
 
 // 상태 관리
-let state = 'IDLE'; 
+let state = 'IDLE';
 let recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
 let currentX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
-let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5 };
-let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5 };
+let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
+let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 
 const tempVec = new THREE.Vector3();
+
+// 다양한 기본 형태 정의
+const SHAPES = {
+    SPHERE: 0,
+    CUBE: 1,
+    TORUS: 2,
+    CONE: 3,
+    CYLINDER: 4,
+    OCTAHEDRON: 5
+};
+
+const SHAPE_NAMES = ['구체', '정육면체', '토러스', '원뿔', '원기둥', '팔면체'];
 
 window.onload = () => { initThree(); };
 
@@ -24,12 +36,56 @@ function initThree() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
 
-    const geometry = new THREE.SphereGeometry(1, 48, 48);
-    sphere = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x00ffcc, wireframe: true }));
-    scene.add(sphere);
-    originalVertices = sphere.geometry.attributes.position.array.slice();
+    // 기본 형태로 구체 생성
+    createShape(SHAPES.SPHERE);
+
     scene.add(new THREE.DirectionalLight(0xffffff, 1), new THREE.AmbientLight(0x222222));
     animate();
+}
+
+// 형태 생성 함수
+function createShape(shapeType) {
+    // 기존 메쉬 제거
+    if (currentMesh) {
+        scene.remove(currentMesh);
+        currentMesh.geometry.dispose();
+        currentMesh.material.dispose();
+    }
+
+    let geometry;
+    switch(shapeType) {
+        case SHAPES.SPHERE:
+            geometry = new THREE.SphereGeometry(1, 48, 48);
+            break;
+        case SHAPES.CUBE:
+            geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5, 32, 32, 32);
+            break;
+        case SHAPES.TORUS:
+            geometry = new THREE.TorusGeometry(0.8, 0.4, 32, 64);
+            break;
+        case SHAPES.CONE:
+            geometry = new THREE.ConeGeometry(1, 2, 48, 32);
+            break;
+        case SHAPES.CYLINDER:
+            geometry = new THREE.CylinderGeometry(0.8, 0.8, 2, 48, 32);
+            break;
+        case SHAPES.OCTAHEDRON:
+            geometry = new THREE.OctahedronGeometry(1.2, 4);
+            break;
+        default:
+            geometry = new THREE.SphereGeometry(1, 48, 48);
+    }
+
+    const material = new THREE.MeshStandardMaterial({
+        color: 0x00ffcc,
+        wireframe: true,
+        metalness: 0.3,
+        roughness: 0.4
+    });
+
+    currentMesh = new THREE.Mesh(geometry, material);
+    scene.add(currentMesh);
+    originalVertices = currentMesh.geometry.attributes.position.array.slice();
 }
 
 async function initEngine() {
@@ -47,7 +103,7 @@ async function initEngine() {
 
     brain = ml5.neuralNetwork({
         inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
-        outputs: ['y1', 'y2', 'y3', 'y4'],
+        outputs: ['y1', 'y2', 'y3', 'y4', 'shape'],
         task: 'regression', debug: true
     });
 
@@ -118,12 +174,16 @@ function animate() {
             targetY.y2 = parseFloat(document.getElementById('y2').value);
             targetY.y3 = parseFloat(document.getElementById('y3').value);
             targetY.y4 = parseFloat(document.getElementById('y4').value);
+            targetY.shape = parseFloat(document.getElementById('shape-selector').value);
         } else if (brain && brain.data && brain.data.list.length >= 5) {
             // 평상시에는 AI가 예측
             brain.predict(currentX, (err, res) => {
                 if(!err) {
-                    targetY.y1 = res[0].value; targetY.y2 = res[1].value;
-                    targetY.y3 = res[2].value; targetY.y4 = res[3].value;
+                    targetY.y1 = res[0].value;
+                    targetY.y2 = res[1].value;
+                    targetY.y3 = res[2].value;
+                    targetY.y4 = res[3].value;
+                    targetY.shape = res[4].value;
                 }
             });
         }
@@ -133,6 +193,13 @@ function animate() {
         currentY.y2 += (targetY.y2 - currentY.y2) * 0.1;
         currentY.y3 += (targetY.y3 - currentY.y3) * 0.1;
         currentY.y4 += (targetY.y4 - currentY.y4) * 0.1;
+        currentY.shape += (targetY.shape - currentY.shape) * 0.1;
+
+        // 형태 변경 (임계값 도달 시)
+        const roundedShape = Math.round(currentY.shape);
+        if (roundedShape !== Math.round(currentY.shape - (targetY.shape - currentY.shape) * 0.1)) {
+            createShape(Math.max(0, Math.min(5, roundedShape)));
+        }
 
         // 시각화는 항상 실시간 소리(currentX.loudness)에 반응하게 함
         updateVisuals(currentX.loudness);
@@ -165,21 +232,23 @@ function analyzeAudio() {
 }
 
 function updateVisuals(loudness) {
-    const pos = sphere.geometry.attributes.position;
+    if (!currentMesh) return;
+
+    const pos = currentMesh.geometry.attributes.position;
     const t = Date.now() * 0.001;
     for (let i = 0; i < pos.count; i++) {
         const i3 = i * 3;
         tempVec.set(originalVertices[i3], originalVertices[i3+1], originalVertices[i3+2]).normalize();
-        
+
         // 슬라이더(currentY)에 의한 형태 변형 + 실시간 소리(loudness)에 의한 진폭
         const wave = Math.sin(tempVec.x * (5 + currentY.y4 * 25) + t) * currentY.y2 * 0.5;
-        const rough = (Math.sin(t * 10) * 0.1) * currentY.y3; // 거친 느낌 추가
+        const rough = (Math.sin(t * 10) * 0.1) * currentY.y3;
         const dist = 1 + wave + rough + (loudness * 0.4);
-        
+
         tempVec.multiplyScalar(dist);
         pos.setXYZ(i, tempVec.x, tempVec.y, tempVec.z);
     }
-    sphere.rotation.y += 0.005 + (currentY.y1 * 0.05);
+    currentMesh.rotation.y += 0.005 + (currentY.y1 * 0.05);
     pos.needsUpdate = true;
 }
 
@@ -188,7 +257,8 @@ function confirmTraining() {
         y1: parseFloat(document.getElementById('y1').value),
         y2: parseFloat(document.getElementById('y2').value),
         y3: parseFloat(document.getElementById('y3').value),
-        y4: parseFloat(document.getElementById('y4').value)
+        y4: parseFloat(document.getElementById('y4').value),
+        shape: parseFloat(document.getElementById('shape-selector').value)
     };
 
     brain.addData({
@@ -273,7 +343,7 @@ function clearAllData() {
         // brain 재생성
         brain = ml5.neuralNetwork({
             inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
-            outputs: ['y1', 'y2', 'y3', 'y4'],
+            outputs: ['y1', 'y2', 'y3', 'y4', 'shape'],
             task: 'regression', debug: true
         });
 
@@ -289,10 +359,10 @@ function exportCSV() {
         return;
     }
 
-    let csv = 'loudness,pitch,brightness,roughness,y1,y2,y3,y4\n';
+    let csv = 'loudness,pitch,brightness,roughness,y1,y2,y3,y4,shape\n';
     brain.data.data.raw.forEach(item => {
         csv += `${item.xs.loudness},${item.xs.pitch},${item.xs.brightness},${item.xs.roughness},`;
-        csv += `${item.ys.y1},${item.ys.y2},${item.ys.y3},${item.ys.y4}\n`;
+        csv += `${item.ys.y1},${item.ys.y2},${item.ys.y3},${item.ys.y4},${item.ys.shape}\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -301,4 +371,13 @@ function exportCSV() {
     a.href = url;
     a.download = `soundTo3D_data_${Date.now()}.csv`;
     a.click();
+}
+
+// 형태 선택기 변경 시 실시간 미리보기
+function onShapeChange() {
+    if (state === 'REVIEWING') {
+        const shapeValue = parseInt(document.getElementById('shape-selector').value);
+        createShape(shapeValue);
+        document.getElementById('shape-name').innerText = SHAPE_NAMES[shapeValue];
+    }
 }
