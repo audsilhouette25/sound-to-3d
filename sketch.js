@@ -111,13 +111,19 @@ async function initEngine() {
         debug: false
     });
 
-    // 저장된 학습 데이터 불러오기
-    loadTrainingData();
+    console.log('Brain created, waiting for ready state...');
+
+    // ml5.js brain이 완전히 초기화될 때까지 대기
+    // 약간의 지연 후 데이터 불러오기
+    setTimeout(() => {
+        console.log('Brain ready, loading training data...');
+        loadTrainingData();
+        updateDataCount();
+    }, 100);
 
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
-    updateDataCount();
 
     updateStatus('statusActive', 'status-idle');
 }
@@ -158,8 +164,15 @@ async function startRecording() {
         sourceNode = null;
     }
 
-    // 마이크는 initEngine()에서 이미 연결되어 있음
-    // 녹음 재시작 시 새 MediaRecorder만 생성
+    // 마이크가 없으면 새로 요청
+    if (!microphoneStream) {
+        console.log('마이크 다시 켜기...');
+        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        microphone = audioCtx.createMediaStreamSource(microphoneStream);
+        microphone.connect(analyser);
+    }
+
+    // 새 MediaRecorder 생성
     mediaRecorder = new MediaRecorder(microphoneStream);
     mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
     mediaRecorder.onstop = saveRecording;
@@ -177,8 +190,17 @@ function stopRecording() {
     mediaRecorder.stop();
     state = 'REVIEWING';
 
-    // 마이크는 꺼지지 않고 계속 analyser에 연결된 상태 유지
-    // 이래야 animate() 루프에서 analyzeAudio()가 정상 작동함
+    // 녹음 종료 시 마이크 중단 (사용자 요청)
+    // 단, analyser는 연결 유지하여 재생 시 분석 가능하게 함
+    if (microphoneStream) {
+        microphoneStream.getTracks().forEach(track => track.stop());
+        microphoneStream = null;
+        console.log('마이크 꺼짐');
+    }
+    if (microphone) {
+        microphone.disconnect();
+        microphone = null;
+    }
 
     const t = translations[currentLang];
     document.getElementById('btn-main').innerText = t.btnReRecord;
