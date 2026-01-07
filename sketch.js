@@ -3,6 +3,7 @@ let audioChunks = [];
 let audioBlob, audioUrl, audioTag, sourceNode;
 let brain;
 let scene, camera, renderer, currentMesh, originalVertices;
+let microphoneStream; // 마이크 스트림 저장
 
 // 상태 관리
 let state = 'IDLE';
@@ -23,7 +24,7 @@ const SHAPES = {
     OCTAHEDRON: 5
 };
 
-const SHAPE_NAMES = ['구체', '정육면체', '토러스', '원뿔', '원기둥', '팔면체'];
+const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron'];
 
 window.onload = () => { initThree(); };
 
@@ -89,17 +90,17 @@ function createShape(shapeType) {
 }
 
 async function initEngine() {
-    updateStatus('엔진 초기화 중...', 'status-idle');
+    updateStatus('Initializing Audio Engine...', 'status-idle');
 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    microphone = audioCtx.createMediaStreamSource(stream);
+    microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    microphone = audioCtx.createMediaStreamSource(microphoneStream);
 
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
     microphone.connect(analyser); // 기본적으로 마이크를 분석기에 연결
 
-    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder = new MediaRecorder(microphoneStream);
     mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
     mediaRecorder.onstop = saveRecording;
 
@@ -117,7 +118,7 @@ async function initEngine() {
     document.getElementById('save-load-zone').style.display = 'block';
     updateDataCount();
 
-    updateStatus('대기 중 (녹음 가능)', 'status-idle');
+    updateStatus('Ready - Microphone Active', 'status-idle');
 }
 
 // 상태 업데이트 함수
@@ -127,12 +128,12 @@ function updateStatus(message, className) {
     statusEl.className = 'status-badge ' + className;
 }
 
-function handleRecord() {
-    if (state === 'IDLE' || state === 'REVIEWING') startRecording();
+async function handleRecord() {
+    if (state === 'IDLE' || state === 'REVIEWING') await startRecording();
     else if (state === 'RECORDING') stopRecording();
 }
 
-function startRecording() {
+async function startRecording() {
     state = 'RECORDING';
     audioChunks = [];
     recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
@@ -151,27 +152,40 @@ function startRecording() {
         sourceNode = null;
     }
 
-    // 분석기를 다시 마이크에 연결
-    microphone.connect(analyser);
+    // 마이크 재활성화 (이전에 중단된 경우)
+    if (!microphoneStream || !microphoneStream.active) {
+        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        microphone = audioCtx.createMediaStreamSource(microphoneStream);
+        microphone.connect(analyser);
+        mediaRecorder = new MediaRecorder(microphoneStream);
+        mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+        mediaRecorder.onstop = saveRecording;
+    }
 
     mediaRecorder.start();
     document.getElementById('btn-main').innerText = "녹음 중단 (Stop)";
     document.getElementById('labeling-zone').style.display = "none";
     document.getElementById('btn-play').style.display = "none";
 
-    updateStatus('🔴 녹음 중...', 'status-recording');
+    updateStatus('Recording...', 'status-recording');
 }
 
 function stopRecording() {
     mediaRecorder.stop();
     state = 'REVIEWING';
+
+    // 마이크 완전히 중단
+    if (microphoneStream) {
+        microphoneStream.getTracks().forEach(track => track.stop());
+    }
+
     document.getElementById('btn-main').innerText = "다시 녹음하기";
     document.getElementById('labeling-zone').style.display = "block";
     document.getElementById('btn-confirm').style.display = "block";
     document.getElementById('btn-play').style.display = "inline-block";
     document.getElementById('btn-play').innerText = "▶ 녹음 재생";
 
-    updateStatus('✏️ 리뷰 중 (라벨링 대기)', 'status-review');
+    updateStatus('Review - Awaiting Labels', 'status-review');
 }
 
 function saveRecording() {
@@ -393,10 +407,10 @@ function confirmTraining() {
 
     brain.normalizeData();
 
-    updateStatus('🧠 AI 학습 중...', 'status-recording');
+    updateStatus('Training Neural Network...', 'status-recording');
 
     brain.train({ epochs: 20 }, () => {
-        alert("학습 완료! 데이터가 자동 저장되었습니다.");
+        alert("Training complete! Data has been automatically saved.");
         state = 'IDLE';
 
         // 재생 중지
@@ -406,7 +420,7 @@ function confirmTraining() {
         document.getElementById('btn-main').innerText = "녹음 시작";
         document.getElementById('btn-play').style.display = "none";
 
-        updateStatus('대기 중 (녹음 가능)', 'status-idle');
+        updateStatus('Ready - Microphone Active', 'status-idle');
     });
 }
 
@@ -446,7 +460,7 @@ function loadTrainingData() {
             brain.normalizeData();
             brain.train({ epochs: 20 }, () => {
                 console.log('기존 학습 데이터로 재학습 완료!');
-                alert(`이전 학습 데이터 ${trainingData.data.length}개를 불러왔습니다!\n계속 학습하면 더 똑똑해집니다.`);
+                alert(`Loaded ${trainingData.data.length} training samples from previous session.\nContinue training to improve accuracy.`);
             });
         }
     } catch (e) {
@@ -465,7 +479,7 @@ function updateDataCount() {
 
 // 모든 학습 데이터 삭제
 function clearAllData() {
-    if (confirm('모든 학습 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
+    if (confirm('Delete all training data?\nThis action cannot be undone.')) {
         localStorage.removeItem('soundTo3D_trainingData');
 
         // brain 재생성
@@ -476,14 +490,14 @@ function clearAllData() {
         });
 
         updateDataCount();
-        alert('모든 학습 데이터가 삭제되었습니다.');
+        alert('All training data has been deleted.');
     }
 }
 
 // CSV로 데이터 내보내기 (기존 함수 개선)
 function exportCSV() {
     if (!brain || !brain.data || brain.data.data.raw.length === 0) {
-        alert('내보낼 데이터가 없습니다.');
+        alert('No data to export.');
         return;
     }
 
