@@ -14,6 +14,7 @@ let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 
 // 우리만의 데이터 저장소 (ml5.js 우회)
 let customTrainingData = [];
+let isModelTrained = false; // 모델이 학습되었는지 추적
 
 const tempVec = new THREE.Vector3();
 
@@ -28,6 +29,61 @@ const SHAPES = {
 };
 
 const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron'];
+
+// 소리 특성에 따라 자동으로 형태 분류
+function autoClassifyShape(loudness, pitch, brightness, roughness) {
+    // 정규화된 값들로 분류 (0-1 범위 가정)
+    const normalizedLoudness = Math.min(1, loudness / 5); // loudness는 보통 0-5 범위
+    const normalizedPitch = Math.min(1, pitch);
+    const normalizedBrightness = Math.min(1, brightness);
+    const normalizedRoughness = Math.min(1, roughness);
+
+    // 분류 로직:
+    // - Sphere (0): 부드럽고 균일한 소리 (낮은 roughness, 중간 pitch)
+    // - Cube (1): 각진, 명확한 소리 (높은 brightness, 중간 roughness)
+    // - Torus (2): 회전하는 느낌의 소리 (중간-높은 pitch, 변화가 있는)
+    // - Cone (3): 뾰족하고 날카로운 소리 (높은 pitch, 높은 brightness)
+    // - Cylinder (4): 일정하고 연속적인 소리 (낮은 roughness, 일정한 pitch)
+    // - Octahedron (5): 복잡하고 불규칙한 소리 (높은 roughness, 변화 많음)
+
+    const scores = [0, 0, 0, 0, 0, 0];
+
+    // Sphere: 부드럽고 중간 범위
+    scores[0] = (1 - normalizedRoughness) * 0.4 +
+                (normalizedPitch > 0.3 && normalizedPitch < 0.7 ? 0.6 : 0);
+
+    // Cube: 밝고 적당히 거친
+    scores[1] = normalizedBrightness * 0.5 +
+                (normalizedRoughness > 0.3 && normalizedRoughness < 0.7 ? 0.5 : 0);
+
+    // Torus: 중간-높은 pitch, 회전감
+    scores[2] = (normalizedPitch > 0.5 ? 0.6 : 0.2) +
+                normalizedLoudness * 0.4;
+
+    // Cone: 높고 날카로운
+    scores[3] = (normalizedPitch > 0.6 ? 0.5 : 0) +
+                (normalizedBrightness > 0.6 ? 0.5 : 0);
+
+    // Cylinder: 일정하고 연속적
+    scores[4] = (1 - normalizedRoughness) * 0.5 +
+                (normalizedLoudness > 0.3 ? 0.5 : 0);
+
+    // Octahedron: 복잡하고 거친
+    scores[5] = normalizedRoughness * 0.6 +
+                (normalizedBrightness > 0.5 ? 0.4 : 0.2);
+
+    // 가장 높은 점수의 형태 반환
+    let maxScore = -1;
+    let bestShape = 0;
+    for (let i = 0; i < 6; i++) {
+        if (scores[i] > maxScore) {
+            maxScore = scores[i];
+            bestShape = i;
+        }
+    }
+
+    return bestShape;
+}
 
 window.onload = () => { initThree(); };
 
@@ -438,7 +494,7 @@ function updateVisuals(loudness) {
     pos.needsUpdate = true;
 }
 
-function confirmTraining() {
+function confirmTraining(useAutoShape = false) {
     console.log('=== Confirming training data ===');
 
     // recordedX 검증
@@ -459,29 +515,33 @@ function confirmTraining() {
         return;
     }
 
+    // 자동 형태 분류 사용
+    let shapeValue;
+    if (useAutoShape) {
+        shapeValue = autoClassifyShape(
+            recordedX.loudness,
+            recordedX.pitch,
+            recordedX.brightness,
+            recordedX.roughness
+        );
+        console.log(`Auto-classified shape: ${SHAPE_NAMES[shapeValue]} (${shapeValue})`);
+        // UI 업데이트
+        document.getElementById('shape-selector').value = shapeValue;
+        document.getElementById('shape-name').innerText = SHAPE_NAMES[shapeValue];
+    } else {
+        shapeValue = parseFloat(document.getElementById('shape-selector').value);
+    }
+
     const labels = {
         y1: parseFloat(document.getElementById('y1').value),
         y2: parseFloat(document.getElementById('y2').value),
         y3: parseFloat(document.getElementById('y3').value),
         y4: parseFloat(document.getElementById('y4').value),
-        shape: parseFloat(document.getElementById('shape-selector').value)
+        shape: shapeValue
     };
 
     const inputArray = [recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness];
     const outputArray = [labels.y1, labels.y2, labels.y3, labels.y4, labels.shape];
-
-    // 입력 데이터 상세 검증
-    console.log('Input validation:');
-    console.log('  inputArray:', inputArray);
-    console.log('  inputArray length:', inputArray.length);
-    console.log('  inputArray types:', inputArray.map(v => typeof v));
-    console.log('  inputArray has NaN?:', inputArray.some(v => isNaN(v)));
-
-    console.log('Output validation:');
-    console.log('  outputArray:', outputArray);
-    console.log('  outputArray length:', outputArray.length);
-    console.log('  outputArray types:', outputArray.map(v => typeof v));
-    console.log('  outputArray has NaN?:', outputArray.some(v => isNaN(v)));
 
     // 데이터 검증
     if (inputArray.length !== 4 || outputArray.length !== 5) {
@@ -496,12 +556,6 @@ function confirmTraining() {
         alert('Data validation error. Please refresh and try again.');
         return;
     }
-
-    console.log('Brain state before addData:');
-    console.log('  brain exists?', !!brain);
-    console.log('  brain.data exists?', !!brain.data);
-    console.log('  brain.data.training is Array?', Array.isArray(brain.data.training));
-    console.log('  brain.data.training.length:', brain.data.training.length);
 
     // customTrainingData에 저장
     const dataItem = {
@@ -519,54 +573,65 @@ function confirmTraining() {
     const actualCount = customTrainingData.length;
     console.log(`Successfully saved! Total samples: ${actualCount}`);
 
-    // brain을 새로 만들고 모든 customTrainingData를 다시 추가
-    console.log('Rebuilding brain with all training data...');
-    brain = ml5.neuralNetwork({
-        inputs: 4,
-        outputs: 5,
-        task: 'regression',
-        debug: false
+    // [개선됨] 기존 brain에 새 데이터만 추가하고 증분 학습
+    console.log('Adding new data to existing brain...');
+
+    // brain에 새 데이터 추가
+    brain.addData(inputArray, outputArray);
+
+    // 정규화 및 학습
+    if (customTrainingData.length >= 2) {
+        brain.normalizeData();
+    }
+
+    updateStatus('statusTraining', 'status-recording');
+
+    // 증분 학습 (epochs 수를 줄여서 빠르게)
+    const epochs = customTrainingData.length < 10 ? 20 : 10;
+    brain.train({ epochs: epochs }, () => {
+        console.log('Training complete!');
+        isModelTrained = true;
+
+        // 학습된 모델 저장
+        saveModel();
+
+        alert(`✓ Training Complete!\n\nSaved ${actualCount} sample(s) to storage.\nModel is ready for predictions.`);
+        state = 'IDLE';
+
+        if(audioTag) audioTag.pause();
+
+        const t = translations[currentLang];
+        document.getElementById('labeling-zone').style.display = "none";
+        document.getElementById('btn-main').innerText = t.btnRecord;
+        document.getElementById('btn-play').style.display = "none";
+
+        updateStatus('statusActive', 'status-idle');
     });
+}
 
-    // brain 초기화 대기 후 데이터 추가 및 학습
-    const waitAndTrain = () => {
-        if (brain.data && Array.isArray(brain.data.training)) {
-            console.log('Brain ready, adding all training data...');
+// 학습된 모델 저장 (ml5.js model serialization)
+function saveModel() {
+    if (!brain || !isModelTrained) {
+        console.log('No trained model to save');
+        return;
+    }
 
-            // customTrainingData의 모든 데이터를 brain에 추가
-            for (let i = 0; i < customTrainingData.length; i++) {
-                brain.addData(customTrainingData[i].xs, customTrainingData[i].ys);
-            }
+    try {
+        brain.save('soundTo3D_model', () => {
+            console.log('✓ Model saved to browser storage');
+        });
+    } catch (e) {
+        console.error('Model save failed:', e);
+    }
+}
 
-            console.log(`Added ${customTrainingData.length} samples to brain for training`);
-
-            // 정규화 및 학습
-            if (customTrainingData.length >= 2) {
-                brain.normalizeData();
-            }
-
-            updateStatus('statusTraining', 'status-recording');
-
-            brain.train({ epochs: 20 }, () => {
-                console.log('Training complete!');
-                alert(`✓ Training Complete!\n\nSaved ${actualCount} sample(s) to storage.\nModel is ready for predictions.`);
-                state = 'IDLE';
-
-                if(audioTag) audioTag.pause();
-
-                const t = translations[currentLang];
-                document.getElementById('labeling-zone').style.display = "none";
-                document.getElementById('btn-main').innerText = t.btnRecord;
-                document.getElementById('btn-play').style.display = "none";
-
-                updateStatus('statusActive', 'status-idle');
-            });
-        } else {
-            setTimeout(waitAndTrain, 50);
-        }
-    };
-
-    waitAndTrain();
+// 저장된 모델 불러오기
+function loadModel() {
+    // ml5.js는 파일 시스템에서 모델을 로드하므로,
+    // 브라우저 환경에서는 IndexedDB 같은 방법이 필요
+    // 대신 우리는 customTrainingData가 있으면 재학습하는 방식 사용
+    console.log('Model loading from localStorage not directly supported by ml5.js in browser');
+    console.log('Will retrain from customTrainingData if needed');
 }
 
 // 학습 데이터를 localStorage에 저장 (customTrainingData 사용)
@@ -586,7 +651,7 @@ function saveTrainingData() {
     }
 }
 
-// localStorage에서 학습 데이터 불러오기 (customTrainingData로)
+// localStorage에서 학습 데이터 불러오기 및 자동 재학습
 function loadTrainingData() {
     const saved = localStorage.getItem('soundTo3D_trainingData');
     if (!saved) {
@@ -636,17 +701,24 @@ function loadTrainingData() {
 
         console.log(`✓ Loaded ${customTrainingData.length} samples into customTrainingData`);
 
-        // customTrainingData를 brain에 동기화 (학습 후 예측을 위해)
-        if (customTrainingData.length > 0) {
-            console.log('Syncing customTrainingData to brain...');
+        // [개선됨] 데이터가 있으면 자동으로 brain 재학습
+        if (customTrainingData.length >= 2) {
+            console.log('Auto-retraining brain with loaded data...');
+
+            // brain에 모든 데이터 추가
             for (let i = 0; i < customTrainingData.length; i++) {
-                try {
-                    brain.addData(customTrainingData[i].xs, customTrainingData[i].ys);
-                } catch (err) {
-                    // 실패해도 계속 진행 - customTrainingData에 있으면 됨
-                }
+                brain.addData(customTrainingData[i].xs, customTrainingData[i].ys);
             }
-            console.log('Brain sync attempt complete');
+
+            // 정규화
+            brain.normalizeData();
+
+            // 백그라운드 학습 (alert 없이)
+            const epochs = Math.max(10, Math.min(50, customTrainingData.length * 2));
+            brain.train({ epochs: epochs }, () => {
+                isModelTrained = true;
+                console.log(`✓ Auto-training complete with ${customTrainingData.length} samples`);
+            });
         }
     } catch (e) {
         console.error('Load failed:', e);
@@ -759,6 +831,42 @@ function onShapeChange() {
         createShape(shapeValue);
         document.getElementById('shape-name').innerText = SHAPE_NAMES[shapeValue];
     }
+}
+
+// 자동 형태 분류 토글
+function onAutoShapeToggle() {
+    const isAutoOn = document.getElementById('auto-shape').checked;
+    const shapeSelector = document.getElementById('shape-selector');
+
+    if (isAutoOn) {
+        // 자동 모드: 슬라이더 비활성화
+        shapeSelector.disabled = true;
+        shapeSelector.style.opacity = '0.5';
+
+        // 현재 녹음된 소리로 자동 분류
+        if (state === 'REVIEWING' && recordedX && recordedX.count > 0) {
+            const autoShape = autoClassifyShape(
+                recordedX.loudness,
+                recordedX.pitch,
+                recordedX.brightness,
+                recordedX.roughness
+            );
+            shapeSelector.value = autoShape;
+            document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
+            createShape(autoShape);
+            console.log(`Auto-classified: ${SHAPE_NAMES[autoShape]}`);
+        }
+    } else {
+        // 수동 모드: 슬라이더 활성화
+        shapeSelector.disabled = false;
+        shapeSelector.style.opacity = '1';
+    }
+}
+
+// confirmTraining 호출 시 자동 분류 옵션 확인
+window.confirmTrainingWrapper = function() {
+    const useAutoShape = document.getElementById('auto-shape').checked;
+    confirmTraining(useAutoShape);
 }
 
 // 언어 전환

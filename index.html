@@ -49,6 +49,10 @@
                     <span style="color: #00ffcc;">Base Geometry</span>
                     <span id="shape-name" style="color: #fff;">Sphere</span>
                 </div>
+                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="auto-shape" onchange="onAutoShapeToggle()" style="width: auto; margin: 0; accent-color: #00ffcc;">
+                    <label for="auto-shape" style="font-size: 0.85em; color: #00ffcc; cursor: pointer; margin: 0;">Auto-classify shape from sound</label>
+                </div>
                 <input type="range" id="shape-selector" min="0" max="5" step="1" value="0" onchange="onShapeChange()">
                 <div style="position: relative; font-size: 0.65em; color: #666; margin-top: 3px; height: 15px;">
                     <span style="position: absolute; left: 0%; transform: translateX(-5%);">Sphere</span>
@@ -76,7 +80,7 @@
                 <div class="slider-header"><span class="y4-left">Simple</span><span>y4: Density</span><span class="y4-right">Complex</span></div>
                 <input type="range" id="y4" min="0" max="1" step="0.01" value="0.5">
             </div>
-            <button id="btn-confirm" onclick="confirmTraining()" style="display:none;">Confirm Training Data</button>
+            <button id="btn-confirm" onclick="confirmTrainingWrapper()" style="display:none;">Confirm Training Data</button>
         </div>
         
         <div id="save-load-zone" style="margin-top:20px; padding-top:15px; border-top:1px solid #333; display:none;">
