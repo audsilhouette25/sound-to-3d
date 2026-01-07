@@ -44,8 +44,13 @@
                     <span id="shape-name" style="color: #fff;">Sphere</span>
                 </div>
                 <input type="range" id="shape-selector" min="0" max="5" step="1" value="0" onchange="onShapeChange()">
-                <div style="display: flex; justify-content: space-between; font-size: 0.65em; color: #666; margin-top: 3px;">
-                    <span>구</span><span>상자</span><span>토러스</span><span>원뿔</span><span>원기둥</span><span>팔면체</span>
+                <div style="position: relative; font-size: 0.65em; color: #666; margin-top: 3px; height: 15px;">
+                    <span style="position: absolute; left: 0%; transform: translateX(0%);">Sphere</span>
+                    <span style="position: absolute; left: 20%; transform: translateX(-50%);">Cube</span>
+                    <span style="position: absolute; left: 40%; transform: translateX(-50%);">Torus</span>
+                    <span style="position: absolute; left: 60%; transform: translateX(-50%);">Cone</span>
+                    <span style="position: absolute; left: 80%; transform: translateX(-50%);">Cylinder</span>
+                    <span style="position: absolute; left: 100%; transform: translateX(-100%);">Octa</span>
                 </div>
             </div>
 
