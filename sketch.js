@@ -115,7 +115,35 @@ async function initEngine() {
     const waitForBrainReady = () => {
         if (brain.data && brain.data.training !== undefined) {
             console.log('Brain is ready! brain.data.training exists');
+            console.log('brain.data.training type:', typeof brain.data.training);
+            console.log('brain.data.training is Array?', Array.isArray(brain.data.training));
             console.log('Brain state before load:', brain.data);
+
+            // 테스트: 더미 데이터 추가해서 addData가 작동하는지 확인
+            const testLength = brain.data.training.length;
+            brain.addData([1, 2, 3, 4], [0.5, 0.5, 0.5, 0.5, 0]);
+            const afterTestLength = brain.data.training.length;
+            console.log(`Test addData: before=${testLength}, after=${afterTestLength}, success=${afterTestLength > testLength}`);
+
+            if (afterTestLength === testLength) {
+                console.error('CRITICAL: brain.addData() is NOT working! Brain may be corrupted.');
+                console.log('Recreating brain...');
+                brain = ml5.neuralNetwork({
+                    inputs: 4,
+                    outputs: 5,
+                    task: 'regression',
+                    debug: false
+                });
+                setTimeout(waitForBrainReady, 100);
+                return;
+            }
+
+            // 테스트 데이터 제거 (pop)
+            if (brain.data.training.length > 0) {
+                brain.data.training.pop();
+                console.log('Test data removed');
+            }
+
             loadTrainingData();
             console.log('Brain state after load:', brain.data);
             updateDataCount();
