@@ -158,14 +158,8 @@ async function startRecording() {
         sourceNode = null;
     }
 
-    // 마이크가 없으면 새로 요청
-    if (!microphoneStream) {
-        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        microphone = audioCtx.createMediaStreamSource(microphoneStream);
-        microphone.connect(analyser);
-    }
-
-    // 새 MediaRecorder 생성
+    // 마이크는 initEngine()에서 이미 연결되어 있음
+    // 녹음 재시작 시 새 MediaRecorder만 생성
     mediaRecorder = new MediaRecorder(microphoneStream);
     mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
     mediaRecorder.onstop = saveRecording;
@@ -183,15 +177,8 @@ function stopRecording() {
     mediaRecorder.stop();
     state = 'REVIEWING';
 
-    // 마이크 중단
-    if (microphoneStream) {
-        microphoneStream.getTracks().forEach(track => track.stop());
-        microphoneStream = null;
-    }
-    if (microphone) {
-        microphone.disconnect();
-        microphone = null;
-    }
+    // 마이크는 꺼지지 않고 계속 analyser에 연결된 상태 유지
+    // 이래야 animate() 루프에서 analyzeAudio()가 정상 작동함
 
     const t = translations[currentLang];
     document.getElementById('btn-main').innerText = t.btnReRecord;
