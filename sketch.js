@@ -57,7 +57,25 @@ const AUDIO_CONSTANTS = {
     PITCH_NORMALIZER: 40,
     ROUGHNESS_NORMALIZER: 30,
     MIN_TRAINING_SAMPLES: 0,  // AI가 처음부터 예측, 데이터 추가시 점진적 개선
-    MIN_PREDICTION_SAMPLES: 0  // 학습 데이터 없어도 예측 허용
+    MIN_PREDICTION_SAMPLES: 0,  // 학습 데이터 없어도 예측 허용
+    MAX_TRAINING_SAMPLES: 1000  // 최대 학습 데이터 개수 (메모리 보호)
+};
+
+// 3D 렌더링 상수
+const RENDER_CONSTANTS = {
+    CAMERA_FOV: 75,
+    CAMERA_NEAR: 0.1,
+    CAMERA_FAR: 1000,
+    CAMERA_DISTANCE: 3.5,
+    LERP_SPEED_REVIEWING: 0.3,
+    LERP_SPEED_LIVE: 0.1
+};
+
+// 학습 파라미터 상수
+const TRAINING_CONSTANTS = {
+    EPOCHS_FEW_SAMPLES: 50,   // 10개 미만일 때
+    EPOCHS_MANY_SAMPLES: 30,  // 10개 이상일 때
+    SAMPLE_THRESHOLD: 10
 };
 
 // 소리 특성에 따라 자동으로 형태 분류
@@ -204,8 +222,14 @@ function performAutoClassification() {
                     currentY.shape = fallbackShape;
 
                     cachedAutoShape = fallbackShape;
-                    document.getElementById('shape-selector').value = fallbackShape;
-                    document.getElementById('shape-name').innerText = SHAPE_NAMES[fallbackShape];
+                    // [개선됨] DOM 캐시 일관성 사용
+                    if (cachedDOMElements) {
+                        cachedDOMElements.shapeSelector.value = fallbackShape;
+                        cachedDOMElements.shapeName.innerText = SHAPE_NAMES[fallbackShape];
+                    } else {
+                        document.getElementById('shape-selector').value = fallbackShape;
+                        document.getElementById('shape-name').innerText = SHAPE_NAMES[fallbackShape];
+                    }
                     createShape(fallbackShape);
                     console.log(`📏 Fallback to rule-based: shape=${SHAPE_NAMES[fallbackShape]}, y1-y4=0.5 (currentY also reset)`);
                     return;
@@ -220,8 +244,14 @@ function performAutoClassification() {
                 const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
                 targetY.shape = predictedShape;
                 cachedAutoShape = predictedShape;
-                document.getElementById('shape-selector').value = predictedShape;
-                document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
+                // [개선됨] DOM 캐시 일관성 사용
+                if (cachedDOMElements) {
+                    cachedDOMElements.shapeSelector.value = predictedShape;
+                    cachedDOMElements.shapeName.innerText = SHAPE_NAMES[predictedShape];
+                } else {
+                    document.getElementById('shape-selector').value = predictedShape;
+                    document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
+                }
                 createShape(predictedShape);
                 console.log(`🤖 AI-predicted shape: ${SHAPE_NAMES[predictedShape]} (raw: ${rawShapeValue.toFixed(3)})`);
             }
@@ -236,8 +266,14 @@ function performAutoClassification() {
         );
         targetY.shape = autoShape;
         cachedAutoShape = autoShape;
-        document.getElementById('shape-selector').value = autoShape;
-        document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
+        // [개선됨] DOM 캐시 일관성 사용
+        if (cachedDOMElements) {
+            cachedDOMElements.shapeSelector.value = autoShape;
+            cachedDOMElements.shapeName.innerText = SHAPE_NAMES[autoShape];
+        } else {
+            document.getElementById('shape-selector').value = autoShape;
+            document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
+        }
         createShape(autoShape);
         console.log(`📏 Rule-based shape: ${SHAPE_NAMES[autoShape]}`);
     }
@@ -252,7 +288,12 @@ function initThree() {
     // 컨테이너 크기 기준으로 카메라 설정
     const containerWidth = container.clientWidth;
     const containerHeight = container.clientHeight;
-    camera = new THREE.PerspectiveCamera(75, containerWidth / containerHeight, 0.1, 1000);
+    camera = new THREE.PerspectiveCamera(
+        RENDER_CONSTANTS.CAMERA_FOV,
+        containerWidth / containerHeight,
+        RENDER_CONSTANTS.CAMERA_NEAR,
+        RENDER_CONSTANTS.CAMERA_FAR
+    );
 
     updateCameraPosition();
 
@@ -287,7 +328,7 @@ function initThree() {
 // 카메라 위치 업데이트 함수
 function updateCameraPosition() {
     // 카메라를 화면 중앙에 배치
-    camera.position.set(0, 0, 3.5);
+    camera.position.set(0, 0, RENDER_CONSTANTS.CAMERA_DISTANCE);
 }
 
 // 형태 생성 함수
@@ -420,6 +461,12 @@ async function handleRecord() {
 }
 
 async function startRecording() {
+    // [CRITICAL FIX] Duplicate recording prevention
+    if (state === 'RECORDING') {
+        console.warn('⚠️ Already recording - ignoring duplicate start request');
+        return;
+    }
+
     console.log('=== START RECORDING ===');
     state = 'RECORDING';
     audioChunks = [];
@@ -485,7 +532,24 @@ async function startRecording() {
 function stopRecording() {
     console.log(`Stopping recording... recordedX.count so far: ${recordedX.count}`);
 
-    mediaRecorder.stop();
+    // [CRITICAL FIX] MediaRecorder state validation
+    if (!mediaRecorder) {
+        console.error('⚠️ MediaRecorder not initialized - cannot stop recording');
+        state = 'IDLE';
+        updateStatus('statusActive', 'status-idle');
+        const t = translations[currentLang];
+        document.getElementById('btn-main').innerText = t.btnRecord;
+        return;
+    }
+
+    if (mediaRecorder.state === 'inactive') {
+        console.warn('⚠️ MediaRecorder already stopped - state is inactive');
+        state = 'REVIEWING';
+        // Continue with cleanup since recording has already stopped
+    } else {
+        mediaRecorder.stop();
+    }
+
     state = 'REVIEWING';
 
     // 녹음 종료 시 마이크 중단 (사용자 요청)
@@ -600,27 +664,36 @@ function animate() {
                     // 새로운 예측이 이미 시작되었으면 이 결과 무시
                     if (currentPredictionId !== activePredictionId) return;
 
-                    if(!err && res && res.length >= 5) {
-                        // [추가됨] NaN 검증: 실시간 예측에서도 NaN 방지
-                        const y1 = res[0].value;
-                        const y2 = res[1].value;
-                        const y3 = res[2].value;
-                        const y4 = res[3].value;
-                        const shape = res[4].value;
-
-                        // 유효한 값만 적용
-                        if (!isNaN(y1)) targetY.y1 = y1;
-                        if (!isNaN(y2)) targetY.y2 = y2;
-                        if (!isNaN(y3)) targetY.y3 = y3;
-                        if (!isNaN(y4)) targetY.y4 = y4;
-                        if (!isNaN(shape)) targetY.shape = shape;
+                    // [CRITICAL FIX] Improved error handling
+                    if (err) {
+                        console.error('⚠️ Brain prediction error:', err);
+                        return;
                     }
+
+                    if (!res || res.length < 5) {
+                        console.warn('⚠️ Invalid prediction result - expected 5 outputs, got:', res ? res.length : 'null');
+                        return;
+                    }
+
+                    // [추가됨] NaN 검증: 실시간 예측에서도 NaN 방지
+                    const y1 = res[0].value;
+                    const y2 = res[1].value;
+                    const y3 = res[2].value;
+                    const y4 = res[3].value;
+                    const shape = res[4].value;
+
+                    // 유효한 값만 적용
+                    if (!isNaN(y1)) targetY.y1 = y1;
+                    if (!isNaN(y2)) targetY.y2 = y2;
+                    if (!isNaN(y3)) targetY.y3 = y3;
+                    if (!isNaN(y4)) targetY.y4 = y4;
+                    if (!isNaN(shape)) targetY.shape = shape;
                 });
             }
         }
 
         // 시각화 수치 부드럽게 전이 (리뷰 모드에서는 더 빠르게)
-        const lerpSpeed = (state === 'REVIEWING') ? 0.3 : 0.1;
+        const lerpSpeed = (state === 'REVIEWING') ? RENDER_CONSTANTS.LERP_SPEED_REVIEWING : RENDER_CONSTANTS.LERP_SPEED_LIVE;
         currentY.y1 += (targetY.y1 - currentY.y1) * lerpSpeed;
         currentY.y2 += (targetY.y2 - currentY.y2) * lerpSpeed;
         currentY.y3 += (targetY.y3 - currentY.y3) * lerpSpeed;
@@ -855,6 +928,13 @@ function confirmTraining(useAutoShape = false) {
         return;
     }
 
+    // [CRITICAL FIX] 데이터 개수 제한 (메모리 보호)
+    if (customTrainingData.length >= AUDIO_CONSTANTS.MAX_TRAINING_SAMPLES) {
+        alert(`Maximum training data limit reached (${AUDIO_CONSTANTS.MAX_TRAINING_SAMPLES} samples).\nPlease delete old data or export before adding more.`);
+        console.warn(`⚠️ Training data limit reached: ${customTrainingData.length}/${AUDIO_CONSTANTS.MAX_TRAINING_SAMPLES}`);
+        return;
+    }
+
     // customTrainingData에 저장
     const dataItem = {
         xs: [...inputArray],
@@ -862,7 +942,7 @@ function confirmTraining(useAutoShape = false) {
     };
 
     customTrainingData.push(dataItem);
-    console.log(`✓ Added to customTrainingData (${customTrainingData.length} total)`);
+    console.log(`✓ Added to customTrainingData (${customTrainingData.length}/${AUDIO_CONSTANTS.MAX_TRAINING_SAMPLES} total)`);
 
     // 학습 데이터 자동 저장
     saveTrainingData();
@@ -883,7 +963,9 @@ function confirmTraining(useAutoShape = false) {
     updateStatus('statusTraining', 'status-recording');
 
     // [개선됨] 적응형 epochs: 데이터 수에 따라 조정 (더 많은 학습으로 안정성 확보)
-    const epochs = customTrainingData.length < 10 ? 50 : 30;
+    const epochs = customTrainingData.length < TRAINING_CONSTANTS.SAMPLE_THRESHOLD
+        ? TRAINING_CONSTANTS.EPOCHS_FEW_SAMPLES
+        : TRAINING_CONSTANTS.EPOCHS_MANY_SAMPLES;
     brain.train({ epochs: epochs }, () => {
         console.log('Training complete!');
         isModelTrained = true;
@@ -1010,7 +1092,9 @@ function loadTrainingData() {
             brain.normalizeData();
 
             // [개선됨] 백그라운드 학습 - 충분한 epochs로 안정성 확보
-            const epochs = customTrainingData.length < 10 ? 50 : 30;
+            const epochs = customTrainingData.length < TRAINING_CONSTANTS.SAMPLE_THRESHOLD
+                ? TRAINING_CONSTANTS.EPOCHS_FEW_SAMPLES
+                : TRAINING_CONSTANTS.EPOCHS_MANY_SAMPLES;
             brain.train({ epochs: epochs }, () => {
                 isModelTrained = true;
                 console.log(`✓ Auto-training complete with ${customTrainingData.length} samples`);
