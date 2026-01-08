@@ -598,10 +598,17 @@ function animate() {
             createShape(roundedShape);
         }
 
-        // [수정] 시각화: REVIEWING 상태에서는 녹음된 평균값 사용, 그 외에는 실시간 값 사용
-        const visualLoudness = (state === 'REVIEWING' && recordedX.count > 0)
-            ? recordedX.loudness
-            : currentX.loudness;
+        // [수정] 시각화:
+        // - REVIEWING 상태이고 오디오를 재생 중이면: 재생되는 오디오의 실시간 분석값 사용
+        // - REVIEWING 상태이고 재생 안 하면: 녹음된 평균값 사용 (정적 표시)
+        // - RECORDING 상태: 마이크 실시간 값 사용
+        let visualLoudness = currentX.loudness;
+        if (state === 'REVIEWING' && recordedX.count > 0) {
+            // 재생 중이 아니면 평균값 사용
+            if (!audioTag || audioTag.paused) {
+                visualLoudness = recordedX.loudness;
+            }
+        }
         updateVisuals(visualLoudness);
     }
     renderer.render(scene, camera);
