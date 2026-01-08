@@ -374,10 +374,15 @@ async function handleRecord() {
 }
 
 async function startRecording() {
+    console.log('=== START RECORDING ===');
     state = 'RECORDING';
     audioChunks = [];
     recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
     cachedAutoShape = null; // 새 녹음 시작하면 캐시 초기화
+
+    console.log('Initial recordedX:', recordedX);
+    console.log('analyser exists:', !!analyser);
+    console.log('audioCtx state:', audioCtx ? audioCtx.state : 'no audioCtx');
 
     // 이전 녹음 데이터 삭제
     if(audioTag) {
@@ -434,6 +439,8 @@ async function startRecording() {
 }
 
 function stopRecording() {
+    console.log(`Stopping recording... recordedX.count so far: ${recordedX.count}`);
+
     mediaRecorder.stop();
     state = 'REVIEWING';
 
