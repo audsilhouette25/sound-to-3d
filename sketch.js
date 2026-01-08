@@ -117,7 +117,7 @@ function initThree() {
 // 카메라 위치 업데이트 함수
 function updateCameraPosition() {
     // 카메라를 중앙에서 오른쪽으로 치우치게 배치
-    camera.position.set(2.2, 0, 3.5);
+    camera.position.set(3.0, 0, 3.5);
     // 오브젝트 중심을 바라보도록 설정
     camera.lookAt(0, 0, 0);
 }
