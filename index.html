@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>IML Research - GPU Shader Edition</title>
+    <title>IML Research - GPU & ML Integration</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -17,7 +17,7 @@
         
         <button id="btn-engine" onclick="initEngine()">오디오 엔진 가동 (Start Engine)</button>
         
-        <div id="status" class="status-badge status-idle">준비됨</div>
+        <div id="status" class="status-badge status-idle">엔진 준비됨</div>
 
         <div id="data-display">
             <p>Loudness: <span id="val-loud">0.00</span></p>
@@ -27,9 +27,10 @@
         </div>
 
         <button id="btn-main" onclick="handleRecord()" style="display:none; margin-top:15px;">녹음 시작</button>
-        <button id="btn-play" onclick="togglePlayback()" style="display:none; background:#0077ff; color:white;">소리 듣기</button>
+        <button id="btn-play" onclick="togglePlayback()" style="display:none; background:#0077ff; color:white;">소리 반복 재생</button>
 
         <div id="labeling-zone" style="display:none; margin-top:20px;">
+            <p style="font-size: 0.75rem; color:#00ffcc; text-align:center;">소리에 맞는 시각적 파라미터를 설정하세요</p>
             <div class="slider-group">
                 <div class="slider-header"><span class="y1-left">둥근</span><span>y1: 각짐(Angularity)</span><span class="y1-right">각진</span></div>
                 <input type="range" id="y1" min="0" max="1" step="0.01" value="0.5">
@@ -48,7 +49,7 @@
             </div>
             
             <div class="slider-group">
-                <div class="slider-header"><span>기본 형태 선택 (Base Shape)</span><span id="shape-name">Sphere</span></div>
+                <div class="slider-header"><span>기본 형태 (Base Shape)</span><span id="shape-name">Sphere</span></div>
                 <input type="range" id="shape-selector" min="0" max="5" step="1" value="0" oninput="changeShape(this.value)">
             </div>
 
