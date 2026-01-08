@@ -116,11 +116,14 @@ function initThree() {
 
 // 카메라 위치 업데이트 함수
 function updateCameraPosition() {
-    // 패널 너비만큼 카메라를 왼쪽으로 오프셋
-    // 패널 너비(~370px) + 여백을 고려하여 화면 비율로 계산
+    // 패널 오른쪽 영역의 중심에 카메라와 오브젝트 배치
     const panelWidthPx = 410; // 패널 + 여백
-    const offsetRatio = panelWidthPx / window.innerWidth;
-    const cameraOffsetX = -offsetRatio * 3; // 적절한 오프셋 계산
+    const availableWidth = window.innerWidth - panelWidthPx; // 사용 가능한 너비
+    const rightAreaCenterPx = panelWidthPx + (availableWidth / 2); // 오른쪽 영역 중심
+
+    // 화면 전체 기준으로 정규화 (-1 ~ 1 범위로 변환)
+    const normalizedX = (rightAreaCenterPx / window.innerWidth) * 2 - 1;
+    const cameraOffsetX = normalizedX * (window.innerWidth / window.innerHeight) * 1.5;
 
     camera.position.set(cameraOffsetX, 0, 3.5);
 }
