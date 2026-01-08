@@ -448,12 +448,13 @@ function stopRecording() {
 
     updateStatus('statusReview', 'status-review');
 
-    // [개선됨] 자동 분류가 켜져 있으면 즉시 실행 (공통 함수 사용)
-    if (document.getElementById('auto-shape').checked) {
-        setTimeout(() => {
-            performAutoClassification();
-        }, 100); // 약간의 딜레이를 주어 recordedX가 완전히 업데이트되도록 함
+    // [수정됨] shape-name을 초기 상태로 설정 (undefined 방지)
+    if (!document.getElementById('auto-shape').checked) {
+        // 수동 모드면 현재 슬라이더 값으로 표시
+        const currentShape = parseInt(document.getElementById('shape-selector').value);
+        document.getElementById('shape-name').innerText = SHAPE_NAMES[currentShape];
     }
+    // Auto 모드일 때는 saveRecording 콜백에서 처리
 }
 
 function saveRecording() {
@@ -473,6 +474,13 @@ function saveRecording() {
     }
 
     console.log('saveRecording - recordedX after processing:', recordedX);
+
+    // [추가됨] 자동 분류가 켜져 있으면 평균 계산 후 실행
+    if (document.getElementById('auto-shape').checked) {
+        setTimeout(() => {
+            performAutoClassification();
+        }, 50); // recordedX 평균 계산 완료 후 실행
+    }
 }
 
 // 녹음 재생/일시정지 토글
