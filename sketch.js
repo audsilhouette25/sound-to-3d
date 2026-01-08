@@ -92,12 +92,8 @@ function initThree() {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-    // 패널이 왼쪽에서 떨어진 것처럼, 카메라도 오른쪽에서 같은 비율만큼 떨어뜨림
-    const panelOffset = 20; // 패널의 left 값 (20px)
-    const offsetRatio = panelOffset / window.innerWidth; // 화면 대비 비율
-    const cameraX = (0.5 - offsetRatio) * -6; // 오른쪽에서 같은 비율만큼 왼쪽으로
+    updateCameraPosition();
 
-    camera.position.set(cameraX, 0, 3.5);
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
@@ -106,7 +102,26 @@ function initThree() {
     createShape(SHAPES.SPHERE);
 
     scene.add(new THREE.DirectionalLight(0xffffff, 1), new THREE.AmbientLight(0x222222));
+
+    // 창 크기 변경 시 카메라 위치 업데이트
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        updateCameraPosition();
+    });
+
     animate();
+}
+
+// 카메라 위치 업데이트 함수
+function updateCameraPosition() {
+    // 패널이 왼쪽에서 떨어진 것처럼, 카메라도 오른쪽에서 같은 비율만큼 떨어뜨림
+    const panelOffset = 20; // 패널의 left 값 (20px)
+    const offsetRatio = panelOffset / window.innerWidth; // 화면 대비 비율
+    const cameraX = (0.5 - offsetRatio) * -6; // 오른쪽에서 같은 비율만큼 왼쪽으로
+
+    camera.position.set(cameraX, 0, 3.5);
 }
 
 // 형태 생성 함수
