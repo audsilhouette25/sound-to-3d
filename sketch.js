@@ -400,12 +400,22 @@ async function startRecording() {
             microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             microphone = audioCtx.createMediaStreamSource(microphoneStream);
             microphone.connect(analyser);
+            console.log('✓ Microphone connected to analyser');
         } catch (err) {
             console.error('Microphone access error:', err);
             alert('Failed to access microphone. Please check permissions and try again.');
             state = 'IDLE';
             updateStatus('statusActive', 'status-idle');
             return;
+        }
+    } else {
+        // 마이크는 있지만 analyser 연결 확인
+        console.log('✓ Microphone stream already exists');
+        if (!microphone || !microphone.context) {
+            console.log('Re-creating microphone source node...');
+            microphone = audioCtx.createMediaStreamSource(microphoneStream);
+            microphone.connect(analyser);
+            console.log('✓ Microphone reconnected to analyser');
         }
     }
 
@@ -605,6 +615,16 @@ function analyzeAudio() {
         recordedX.brightness += currentX.brightness;
         recordedX.roughness += currentX.roughness;
         recordedX.count++;
+
+        // 디버깅: 처음 몇 프레임만 로그
+        if (recordedX.count <= 3) {
+            console.log(`Recording frame ${recordedX.count}:`, {
+                loudness: currentX.loudness.toFixed(3),
+                pitch: currentX.pitch.toFixed(3),
+                brightness: currentX.brightness.toFixed(3),
+                roughness: currentX.roughness.toFixed(3)
+            });
+        }
     }
 }
 
