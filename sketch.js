@@ -116,12 +116,11 @@ function initThree() {
 
 // 카메라 위치 업데이트 함수
 function updateCameraPosition() {
-    // 패널이 왼쪽에서 떨어진 것처럼, 카메라도 오른쪽에서 같은 비율만큼 떨어뜨림
-    const panelOffset = 20; // 패널의 left 값 (20px)
-    const offsetRatio = panelOffset / window.innerWidth; // 화면 대비 비율
-    const cameraX = (0.5 - offsetRatio) * -6; // 오른쪽에서 같은 비율만큼 왼쪽으로
+    // 카메라를 중앙에서 오른쪽으로 치우치게 배치
+    camera.position.set(1.5, 0, 3.5);
 
-    camera.position.set(cameraX, 0, 3.5);
+    // 오브젝트 중심을 바라보도록 설정
+    camera.lookAt(0, 0, 0);
 }
 
 // 형태 생성 함수
