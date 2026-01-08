@@ -482,7 +482,7 @@ function updateVisuals(loudness) {
             case SHAPES.TORUS:
                 // 토러스: 회전 나선 파동
                 const angle = Math.atan2(oz, ox);
-                const torusWave = Math.sin(angle * (3 + currentY.y4 * 10) + t * 2) * currentY.y2;
+                const torusWave = Math.sin(angle * (3 + currentY.y4 * 3) + t * 2) * currentY.y2;
                 const radialPulse = Math.sin(oy * 5 + t * 3) * currentY.y3 * 0.15;
                 const scale = 1 + (torusWave * 0.2 + radialPulse + loudness * 0.2);
                 tempVec.x = ox * scale;
@@ -493,7 +493,7 @@ function updateVisuals(loudness) {
             case SHAPES.CONE:
                 // 원뿔: 높이에 따른 차등 변형
                 const heightFactor = (oy + 1) / 2; // 0~1 정규화
-                const coneWave = Math.sin(Math.atan2(oz, ox) * (4 + currentY.y4 * 8) + t) * currentY.y2;
+                const coneWave = Math.sin(Math.atan2(oz, ox) * (4 + currentY.y4 * 3) + t) * currentY.y2;
                 const heightWave = Math.sin(oy * 3 + t * 2) * currentY.y3 * 0.2;
                 const coneScale = 1 + (coneWave * 0.25 + heightWave) * heightFactor + loudness * 0.3;
                 tempVec.x = ox * coneScale;
@@ -504,7 +504,7 @@ function updateVisuals(loudness) {
             case SHAPES.CYLINDER:
                 // 원기둥: 세로 파동 + 회전 왜곡
                 const cylAngle = Math.atan2(oz, ox);
-                const cylWave = Math.sin(cylAngle * (5 + currentY.y4 * 10) + oy * 2 + t * 2) * currentY.y2;
+                const cylWave = Math.sin(cylAngle * (5 + currentY.y4 * 3) + oy * 2 + t * 2) * currentY.y2;
                 const verticalWave = Math.sin(oy * 4 + t * 3) * currentY.y3 * 0.15;
                 const cylScale = 1 + cylWave * 0.25 + verticalWave + loudness * 0.25;
                 tempVec.x = ox * cylScale;
@@ -515,9 +515,9 @@ function updateVisuals(loudness) {
                 // 팔면체: 꼭지점 기반 복잡한 변형
                 tempVec.normalize();
                 const octWave1 = Math.sin(tempVec.x * 5 + t) * Math.cos(tempVec.y * 5 + t);
-                const octWave2 = Math.sin(tempVec.z * 5 + t * 1.5) * currentY.y4;
+                const octWave2 = Math.sin(tempVec.z * 5 + t * 1.5) * currentY.y4 * 0.3;
                 const octRough = (Math.sin(t * 15) * 0.05) * currentY.y3;
-                displacement = 1.2 + octWave1 * currentY.y2 * 0.4 + octWave2 * 0.3 + octRough + loudness * 0.35;
+                displacement = 1.2 + octWave1 * currentY.y2 * 0.4 + octWave2 + octRough + loudness * 0.35;
                 tempVec.set(ox, oy, oz).normalize().multiplyScalar(displacement);
                 break;
         }
