@@ -12,12 +12,12 @@
     <div id="ui-container">
         <div id="header-section">
             <h1 id="title">IML Research</h1>
-            <button id="lang-toggle" onclick="toggleLang()">EN</button>
+            <button id="lang-toggle" onclick="toggleLanguage()">EN</button>
         </div>
         
-        <button id="btn-start" onclick="initEngine()">오디오 엔진 가동 (Start Engine)</button>
+        <button id="btn-engine" onclick="initEngine()">오디오 엔진 가동 (Start Engine)</button>
         
-        <div id="status" class="status-idle">엔진 준비됨</div>
+        <div id="status" class="status-badge status-idle">준비됨</div>
 
         <div id="data-display">
             <p>Loudness: <span id="val-loud">0.00</span></p>
@@ -27,26 +27,32 @@
         </div>
 
         <button id="btn-main" onclick="handleRecord()" style="display:none; margin-top:15px;">녹음 시작</button>
+        <button id="btn-play" onclick="togglePlayback()" style="display:none; background:#0077ff; color:white;">소리 듣기</button>
 
         <div id="labeling-zone" style="display:none; margin-top:20px;">
-            <p id="labeling-msg" style="font-size: 0.8em; color: #00ffcc; text-align: center; margin-bottom:15px;">소리에 어울리는 형태를 설정하세요</p>
             <div class="slider-group">
-                <div class="slider-header"><span class="y1-left">둥근</span><span>y1: Angularity</span><span class="y1-right">각진</span></div>
+                <div class="slider-header"><span class="y1-left">둥근</span><span>y1: 각짐(Angularity)</span><span class="y1-right">각진</span></div>
                 <input type="range" id="y1" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span class="y2-left">부드러운</span><span>y2: Spikiness</span><span class="y2-right">뾰족한</span></div>
+                <div class="slider-header"><span class="y2-left">부드러운</span><span>y2: 뾰족함(Spikiness)</span><span class="y2-right">뾰족한</span></div>
                 <input type="range" id="y2" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span class="y3-left">매끈한</span><span>y3: Texture</span><span class="y3-right">거친</span></div>
+                <div class="slider-header"><span class="y3-left">매끈한</span><span>y3: 거칠기(Texture)</span><span class="y3-right">거친</span></div>
                 <input type="range" id="y3" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span class="y4-left">단순</span><span>y4: Density</span><span class="y4-right">복잡</span></div>
+                <div class="slider-header"><span class="y4-left">단순</span><span>y4: 복잡도(Density)</span><span class="y4-right">복잡</span></div>
                 <input type="range" id="y4" min="0" max="1" step="0.01" value="0.5">
             </div>
-            <button id="btn-confirm" onclick="confirmTrainingWrapper()" style="background:#0077ff; color:white; margin-top:10px;">데이터 확정 및 학습</button>
+            
+            <div class="slider-group">
+                <div class="slider-header"><span>기본 형태 선택 (Base Shape)</span><span id="shape-name">Sphere</span></div>
+                <input type="range" id="shape-selector" min="0" max="5" step="1" value="0" oninput="changeShape(this.value)">
+            </div>
+
+            <button id="btn-confirm" onclick="confirmTrainingWrapper()" style="background:#00ffcc; color:black; margin-top:10px;">데이터 확정 및 학습</button>
         </div>
         
         <div id="save-load-zone" style="margin-top:auto; padding-top:15px; border-top:1px solid #333; display:none;">
