@@ -91,7 +91,12 @@ function initThree() {
     const container = document.getElementById('three-container');
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(1.2, 0, 3.5); // 오른쪽으로 이동하여 패널에 가려지지 않게 함
+
+    // 패널 너비(약 370px)를 고려하여 오른쪽 빈 공간의 중앙에 배치
+    const panelWidth = 370; // 패널 전체 너비 (320px + padding 50px)
+    const offsetX = (panelWidth / window.innerWidth) * 3; // 정규화된 오프셋
+
+    camera.position.set(offsetX, 0, 3.5);
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
