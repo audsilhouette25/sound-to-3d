@@ -116,21 +116,8 @@ function initThree() {
 
 // 카메라 위치 업데이트 함수
 function updateCameraPosition() {
-    // 패널 오른쪽 영역의 중심에 카메라 배치
-    const panelWidthPx = 410; // 패널 + 여백
-    const screenCenterPx = window.innerWidth / 2; // 화면 전체 중앙
-    const availableWidth = window.innerWidth - panelWidthPx; // 사용 가능한 너비
-    const rightAreaCenterPx = panelWidthPx + (availableWidth / 2); // 오른쪽 영역 중심
-
-    // 화면 중앙에서 오른쪽 영역 중심까지의 오프셋 (픽셀)
-    const offsetFromCenterPx = rightAreaCenterPx - screenCenterPx;
-
-    // Three.js 좌표로 변환 (양수 = 오른쪽)
-    // 화면 너비의 절반을 기준으로 정규화하고, aspect ratio를 곱함
-    const normalizedOffset = offsetFromCenterPx / (window.innerWidth / 2);
-    const cameraX = normalizedOffset * (window.innerWidth / window.innerHeight) * 1.5;
-
-    camera.position.set(cameraX, 0, 3.5);
+    // 카메라를 화면 중앙에 배치
+    camera.position.set(0, 0, 3.5);
 }
 
 // 형태 생성 함수
