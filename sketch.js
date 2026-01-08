@@ -91,7 +91,7 @@ function initThree() {
     const container = document.getElementById('three-container');
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 3.5;
+    camera.position.set(1.2, 0, 3.5); // 오른쪽으로 이동하여 패널에 가려지지 않게 함
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
