@@ -6,12 +6,12 @@ let scene, camera, renderer, currentMesh;
 let state = 'IDLE';
 let recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
 let currentX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
-let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5 };
-let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5 };
-let currentLang = 'KR';
+let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
+let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let customTrainingData = [];
+let currentLang = 'KR';
 
-// --- GPU 셰이더 정의 (Vertex & Fragment) ---
+// --- GPU 셰이더 정의 (Vertex Shader: 형태 변형 담당) ---
 const vertexShader = `
     varying float vDisplacement;
     varying vec3 vNormal;
@@ -19,6 +19,7 @@ const vertexShader = `
     uniform float uLoudness;
     uniform float uY1, uY2, uY3, uY4;
 
+    // GPU용 노이즈 함수
     float hash(float n) { return fract(sin(n) * 43758.5453123); }
     float noise(vec3 x) {
         vec3 p = floor(x); vec3 f = fract(x);
@@ -31,25 +32,35 @@ const vertexShader = `
     void main() {
         vNormal = normal;
         vec3 pos = position;
+        
+        // y4: Density (노이즈의 밀도 조절)
         float noiseVal = noise(pos * (2.0 + uY4 * 10.0) + uTime * 0.5);
-        float wave = sin(pos.x * 10.0 + uTime) * uY2 * 0.3;
+        
+        // y1: Angularity (노이즈를 계단식으로 깎아 각진 형태 생성)
         float angular = floor(noiseVal * (1.0 + (1.0-uY1)*10.0)) / (1.0 + (1.0-uY1)*10.0);
         float finalNoise = mix(noiseVal, angular, uY1);
         
-        float displacement = (finalNoise * uY3 * 0.5) + (uLoudness * 0.4) + wave;
+        // y2: Spikiness (삼각함수를 이용한 뾰족한 가시 생성)
+        float wave = sin(pos.x * 15.0 + uTime) * uY2 * 0.4;
+        
+        // y3: Texture (거칠기 조절)
+        float displacement = (finalNoise * uY3 * 0.6) + (uLoudness * 0.5) + wave;
+        
         vDisplacement = displacement;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
+        vec3 newPos = pos + normal * displacement;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
     }
 `;
 
+// --- GPU 셰이더 정의 (Fragment Shader: 색상 담당) ---
 const fragmentShader = `
     varying float vDisplacement;
     varying vec3 vNormal;
     void main() {
-        vec3 color1 = vec3(0.0, 1.0, 0.8); // Cyan
-        vec3 color2 = vec3(0.1, 0.1, 0.4); // Deep Blue
-        vec3 finalColor = mix(color2, color1, vDisplacement + 0.2);
-        gl_FragColor = vec4(finalColor, 0.9);
+        vec3 colorA = vec3(0.0, 1.0, 0.8); // Cyan
+        vec3 colorB = vec3(0.1, 0.05, 0.3); // Deep Purple
+        vec3 finalColor = mix(colorB, colorA, vDisplacement + 0.3);
+        gl_FragColor = vec4(finalColor, 0.85);
     }
 `;
 
@@ -58,24 +69,45 @@ let shaderUniforms = {
     uY1: { value: 0.5 }, uY2: { value: 0.5 }, uY3: { value: 0.5 }, uY4: { value: 0.5 }
 };
 
-// --- 초기화 로직 ---
+// --- 초기화 및 엔진 로직 ---
 function initThree() {
     const container = document.getElementById('three-container');
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 3;
+    camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.z = 3.5;
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
 
-    const geometry = new THREE.SphereGeometry(1, 128, 128);
-    const material = new THREE.ShaderMaterial({
-        uniforms: shaderUniforms, vertexShader, fragmentShader, wireframe: true, transparent: true
-    });
-    currentMesh = new THREE.Mesh(geometry, material);
-    scene.add(currentMesh);
+    createShape(0);
     animate();
+}
+
+function createShape(type) {
+    if (currentMesh) {
+        scene.remove(currentMesh);
+        currentMesh.geometry.dispose();
+    }
+    
+    let geo;
+    if (type == 0) geo = new THREE.SphereGeometry(1, 128, 128);
+    else if (type == 1) geo = new THREE.BoxGeometry(1.5, 1.5, 1.5, 64, 64, 64);
+    else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
+    else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
+    else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
+    else geo = new THREE.OctahedronGeometry(1.2, 32);
+
+    const mat = new THREE.ShaderMaterial({
+        uniforms: shaderUniforms,
+        vertexShader,
+        fragmentShader,
+        wireframe: true,
+        transparent: true
+    });
+
+    currentMesh = new THREE.Mesh(geo, mat);
+    scene.add(currentMesh);
 }
 
 async function initEngine() {
@@ -92,29 +124,33 @@ async function initEngine() {
 
     brain = ml5.neuralNetwork({
         inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
-        outputs: ['y1', 'y2', 'y3', 'y4'],
+        outputs: ['y1', 'y2', 'y3', 'y4', 'shape'],
         task: 'regression', debug: false
     });
 
-    document.getElementById('btn-start').style.display = 'none';
+    document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
     initThree();
 }
 
-// --- 워크플로우 제어 ---
 function handleRecord() {
+    const t = translations[currentLang];
     if (state === 'IDLE' || state === 'REVIEWING') {
         state = 'RECORDING'; audioChunks = [];
         recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
         if(audioTag) audioTag.pause();
         mediaRecorder.start();
+        document.getElementById('btn-main').innerText = t.btnStop;
+        updateStatus('Recording...', 'status-recording');
     } else {
         mediaRecorder.stop();
         state = 'REVIEWING';
         document.getElementById('labeling-zone').style.display = 'block';
+        document.getElementById('btn-play').style.display = 'block';
+        document.getElementById('btn-main').innerText = t.btnReRecord;
+        updateStatus('Reviewing & Labeling', 'status-review');
     }
-    updateUI();
 }
 
 function saveRecording() {
@@ -122,44 +158,65 @@ function saveRecording() {
     const url = URL.createObjectURL(blob);
     audioTag = new Audio(url);
     audioTag.loop = true;
-    if (sourceNode) sourceNode.disconnect();
-    sourceNode = audioCtx.createMediaElementSource(audioTag);
-    sourceNode.connect(analyser);
-    analyser.connect(audioCtx.destination);
-    audioTag.play();
-
+    
     recordedX.loudness /= recordedX.count;
     recordedX.pitch /= recordedX.count;
     recordedX.brightness /= recordedX.count;
     recordedX.roughness /= recordedX.count;
 }
 
+function togglePlayback() {
+    const t = translations[currentLang];
+    if (audioTag.paused) {
+        if (sourceNode) sourceNode.disconnect();
+        sourceNode = audioCtx.createMediaElementSource(audioTag);
+        sourceNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        audioTag.play();
+        document.getElementById('btn-play').innerText = t.btnPause || "Pause";
+    } else {
+        audioTag.pause();
+        document.getElementById('btn-play').innerText = t.btnPlay || "Play Loop";
+    }
+}
+
 function animate() {
     requestAnimationFrame(animate);
     if (!analyser) return;
 
+    // 1. 오디오 분석
     analyzeAudio();
+    
+    // 2. 셰이더 유니폼 업데이트
     shaderUniforms.uTime.value += 0.05;
     shaderUniforms.uLoudness.value = currentX.loudness;
 
+    // 3. 상태별 로직 (리뷰 중엔 슬라이더 값, 그 외엔 AI 예측값 사용)
     if (state === 'REVIEWING') {
         targetY.y1 = parseFloat(document.getElementById('y1').value);
         targetY.y2 = parseFloat(document.getElementById('y2').value);
         targetY.y3 = parseFloat(document.getElementById('y3').value);
         targetY.y4 = parseFloat(document.getElementById('y4').value);
-    } else if (customTrainingData.length >= 5) {
+    } else if (customTrainingData.length >= 3) {
         brain.predict(currentX, (err, res) => {
             if(!err) {
                 targetY.y1 = res[0].value; targetY.y2 = res[1].value;
                 targetY.y3 = res[2].value; targetY.y4 = res[3].value;
+                const nextShape = Math.round(res[4].value * 5);
+                if(nextShape !== targetY.shape) {
+                    targetY.shape = nextShape;
+                    createShape(nextShape);
+                }
             }
         });
     }
 
-    for(let k in currentY) {
+    // 4. 부드러운 보간(Lerp) 적용하여 유니폼에 전송
+    for(let k of ['y1', 'y2', 'y3', 'y4']) {
         currentY[k] += (targetY[k] - currentY[k]) * 0.1;
         shaderUniforms[`u${k.toUpperCase()}`].value = currentY[k];
     }
+    
     currentMesh.rotation.y += 0.005;
     renderer.render(scene, camera);
 }
@@ -199,7 +256,8 @@ function confirmTrainingWrapper() {
         parseFloat(document.getElementById('y1').value),
         parseFloat(document.getElementById('y2').value),
         parseFloat(document.getElementById('y3').value),
-        parseFloat(document.getElementById('y4').value)
+        parseFloat(document.getElementById('y4').value),
+        parseInt(document.getElementById('shape-selector').value) / 5.0
     ];
     
     brain.addData([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], labels);
@@ -212,40 +270,38 @@ function confirmTrainingWrapper() {
         state = 'IDLE';
         if(audioTag) audioTag.pause();
         document.getElementById('labeling-zone').style.display = 'none';
-        updateUI();
+        document.getElementById('btn-play').style.display = 'none';
+        updateStatus('Ready', 'status-idle');
     });
 }
 
-function updateUI() {
-    const btn = document.getElementById('btn-main');
-    const status = document.getElementById('status');
-    const t = translations[currentLang];
-    
-    if (state === 'RECORDING') {
-        btn.innerText = t.btnStop; status.innerText = t.statusRecording; status.className = "status-recording";
-    } else if (state === 'REVIEWING') {
-        btn.innerText = t.btnReRecord; status.innerText = t.statusReview; status.className = "status-review";
-    } else {
-        btn.innerText = t.btnRecord; status.innerText = t.statusReady; status.className = "status-idle";
-    }
-}
-
 const translations = {
-    KR: { btnRecord: "녹음 시작", btnStop: "녹음 중단", btnReRecord: "다시 녹음하기", statusReady: "엔진 준비됨", statusRecording: "녹음 중...", statusReview: "라벨링 모드" },
-    EN: { btnRecord: "Record", btnStop: "Stop", btnReRecord: "Re-record", statusReady: "Ready", statusRecording: "Recording...", statusReview: "Labeling" }
+    KR: { btnRecord: "녹음 시작", btnStop: "중단", btnReRecord: "다시 녹음", btnPlay: "소리 듣기", btnPause: "일시정지" },
+    EN: { btnRecord: "Record", btnStop: "Stop", btnReRecord: "Re-record", btnPlay: "Play Loop", btnPause: "Pause" }
 };
 
-function toggleLang() {
+function toggleLanguage() {
     currentLang = currentLang === 'KR' ? 'EN' : 'KR';
     document.getElementById('lang-toggle').innerText = currentLang === 'KR' ? 'EN' : 'KR';
-    updateUI();
+}
+
+function updateStatus(msg, cls) {
+    const el = document.getElementById('status');
+    el.innerText = msg;
+    el.className = 'status-badge ' + cls;
+}
+
+function changeShape(val) {
+    const names = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron'];
+    document.getElementById('shape-name').innerText = names[val];
+    createShape(val);
 }
 
 function exportCSV() {
-    let csv = "loudness,pitch,brightness,roughness,y1,y2,y3,y4\n";
+    let csv = "loudness,pitch,brightness,roughness,y1,y2,y3,y4,shape\n";
     customTrainingData.forEach(d => { csv += `${d.x.loudness},${d.x.pitch},${d.x.brightness},${d.x.roughness},${d.y.join(',')}\n`; });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `IML_Data_${Date.now()}.csv`;
+    a.download = `IML_Shader_Data_${Date.now()}.csv`;
     a.click();
 }
