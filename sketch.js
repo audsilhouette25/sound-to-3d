@@ -56,8 +56,8 @@ const AUDIO_CONSTANTS = {
     LOUDNESS_MULTIPLIER: 10,
     PITCH_NORMALIZER: 40,
     ROUGHNESS_NORMALIZER: 30,
-    MIN_TRAINING_SAMPLES: 5,  // 2 → 5: Neural network 안정성을 위한 최소 샘플 수 증가
-    MIN_PREDICTION_SAMPLES: 5
+    MIN_TRAINING_SAMPLES: 0,  // AI가 처음부터 예측, 데이터 추가시 점진적 개선
+    MIN_PREDICTION_SAMPLES: 0  // 학습 데이터 없어도 예측 허용
 };
 
 // 소리 특성에 따라 자동으로 형태 분류
@@ -165,8 +165,10 @@ function performAutoClassification() {
         return;
     }
 
-    if (isModelTrained && brain) {
-        // AI 예측 모드
+    // [수정됨] brain이 있으면 항상 AI 예측 시도 (학습 여부 무관)
+    // 학습 데이터가 없으면 랜덤 초기 weights로 예측 → 점진적 개선
+    if (brain) {
+        // AI 예측 모드 (학습 데이터 0개여도 가능)
         brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
             if (!err && res && res.length >= 5) {
                 // [수정됨] 모든 예측값에 대한 NaN 체크
@@ -576,7 +578,8 @@ function animate() {
                 targetY.shape = parseFloat(cachedDOMElements.shapeSelector.value);
             }
             // Auto 모드일 때는 stopRecording()에서 설정한 값 유지
-        } else if (brain && customTrainingData.length >= AUDIO_CONSTANTS.MIN_PREDICTION_SAMPLES) {
+        } else if (brain) {
+            // [수정됨] brain이 있으면 항상 예측 (학습 데이터 없어도 가능)
             // [최적화] AI 예측 throttle: 5프레임마다 1번만 실행 (60fps → 12 predictions/sec)
             predictionFrameCounter++;
             if (predictionFrameCounter >= PREDICTION_INTERVAL) {
@@ -867,10 +870,8 @@ function confirmTraining(useAutoShape = false) {
     // brain에 새 데이터 추가
     brain.addData(inputArray, outputArray);
 
-    // 정규화 및 학습
-    if (customTrainingData.length >= AUDIO_CONSTANTS.MIN_TRAINING_SAMPLES) {
-        brain.normalizeData();
-    }
+    // [수정됨] 항상 정규화 (데이터 개수 무관)
+    brain.normalizeData();
 
     updateStatus('statusTraining', 'status-recording');
 
