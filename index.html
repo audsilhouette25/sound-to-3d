@@ -2,61 +2,60 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>IML Research Lab - High Precision</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <title>IML Research - GPU Shader Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="ui-container">
-        <header>
-            <h1>IML Research Tool v2.0</h1>
-            <div id="status" class="status-idle">엔진 대기 중</div>
-        </header>
+        <div id="header-section">
+            <h1 id="title">IML Research</h1>
+            <button id="lang-toggle" onclick="toggleLang()">EN</button>
+        </div>
+        
+        <button id="btn-start" onclick="initEngine()">Start Audio Engine</button>
+        
+        <div id="status" class="status-idle">Engine Ready</div>
 
-        <section id="audio-engine">
-            <button id="btn-start" onclick="initEngine()">1. 오디오 엔진 가동</button>
-            <button id="btn-record" class="hidden" onclick="handleRecord()">녹음 시작</button>
-        </section>
+        <div id="data-display">
+            <p>Loudness: <span id="val-loud">0.00</span></p>
+            <p>Pitch: <span id="val-pitch">0.00</span></p>
+            <p>Brightness: <span id="val-bright">0.00</span></p>
+            <p>Roughness: <span id="val-rough">0.00</span></p>
+        </div>
 
-        <section id="monitor-section" class="hidden">
-            <h3>Live Audio Features (X)</h3>
-            <div class="monitor-grid">
-                <div class="m-item">Loudness <span id="val-loud">0.00</span></div>
-                <div class="m-item">Pitch <span id="val-pitch">0.00</span></div>
-                <div class="m-item">Bright <span id="val-bright">0.00</span></div>
-                <div class="m-item">Rough <span id="val-rough">0.00</span></div>
-            </div>
-        </section>
+        <button id="btn-main" onclick="handleRecord()" style="display:none; margin-top:15px; background:#ff3366; color:white;">Record</button>
 
-        <section id="label-section" class="hidden">
-            <h3>Visual Labeling (Y)</h3>
+        <div id="labeling-zone" style="display:none; margin-top:20px;">
             <div class="slider-group">
-                <label>y1: Angularity (각짐)</label>
-                <input type="range" id="y1" min="0" max="1" step="0.01" value="0.2">
+                <div class="slider-header"><span class="y1-left">Round</span><span>y1: Angularity</span><span class="y1-right">Sharp</span></div>
+                <input type="range" id="y1" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <label>y2: Spikiness (첨예도)</label>
-                <input type="range" id="y2" min="0" max="1" step="0.01" value="0.2">
+                <div class="slider-header"><span class="y2-left">Smooth</span><span>y2: Spikiness</span><span class="y2-right">Spiky</span></div>
+                <input type="range" id="y2" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <label>y3: Roughness (질감)</label>
-                <input type="range" id="y3" min="0" max="1" step="0.01" value="0.2">
+                <div class="slider-header"><span class="y3-left">Simple</span><span>y3: Texture</span><span class="y3-right">Rough</span></div>
+                <input type="range" id="y3" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <label>y4: Complexity (밀도)</label>
-                <input type="range" id="y4" min="0" max="1" step="0.01" value="0.2">
+                <div class="slider-header"><span class="y4-left">Simple</span><span>y4: Density</span><span class="y4-right">Complex</span></div>
+                <input type="range" id="y4" min="0" max="1" step="0.01" value="0.5">
             </div>
-            <button id="btn-confirm" onclick="confirmTraining()">데이터 확정 및 학습</button>
-        </section>
-
-        <footer>
-            <div id="data-stats">Samples: <span id="count">0</span></div>
-            <button onclick="exportCSV()">Export CSV</button>
-        </footer>
+            <button id="btn-confirm" onclick="confirmTrainingWrapper()" style="background:#0077ff; color:white; margin-top:10px;">Confirm Training Data</button>
+        </div>
+        
+        <div id="save-load-zone" style="margin-top:20px; border-top:1px solid #333; display:none;">
+            <p style="text-align:center; font-size:0.8em; color:#00ffcc; margin-top:10px;">
+                <span id="data-label">Data:</span> <span id="data-count">0</span> <span id="samples-label">samples</span>
+            </p>
+            <button onclick="exportCSV()" style="background:#222; color:#888; font-size:0.7em;">Export CSV</button>
+        </div>
     </div>
-    <div id="canvas-container"></div>
-
+    <div id="three-container"></div>
     <script src="sketch.js"></script>
 </body>
 </html>
