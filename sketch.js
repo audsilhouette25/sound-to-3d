@@ -7,7 +7,7 @@ let microphoneStream; // 마이크 스트림 저장
 
 // 상태 관리
 let state = 'IDLE';
-let recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
+let recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
 let currentX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
 let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
@@ -21,6 +21,23 @@ let isModelTrained = false; // 모델이 학습되었는지 추적
 
 const tempVec = new THREE.Vector3();
 
+// DOM 요소 캐시 (성능 최적화)
+let cachedDOMElements = null;
+
+// 예측 throttle 및 race condition 방지
+let predictionFrameCounter = 0;
+let activePredictionId = 0;
+const PREDICTION_INTERVAL = 5; // 5프레임마다 1번 예측 (60fps → 12 predictions/sec)
+
+// 형태 변경 추적
+let previousShape = -1;
+
+// 리사이즈 이벤트 핸들러 참조
+let resizeHandler = null;
+
+// 디바운스 타이머
+let shapeChangeTimer = null;
+
 // 다양한 기본 형태 정의
 const SHAPES = {
     SPHERE: 0,
@@ -33,13 +50,32 @@ const SHAPES = {
 
 const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron'];
 
+// [추가됨] 상수 정의 (매직 넘버 제거)
+const AUDIO_CONSTANTS = {
+    LOUDNESS_NORMALIZER: 5,
+    LOUDNESS_MULTIPLIER: 10,
+    PITCH_NORMALIZER: 40,
+    ROUGHNESS_NORMALIZER: 30,
+    MIN_TRAINING_SAMPLES: 2,
+    MIN_PREDICTION_SAMPLES: 5
+};
+
 // 소리 특성에 따라 자동으로 형태 분류
 function autoClassifyShape(loudness, pitch, brightness, roughness) {
+    // [추가됨] 입력 검증
+    if (typeof loudness !== 'number' || isNaN(loudness) ||
+        typeof pitch !== 'number' || isNaN(pitch) ||
+        typeof brightness !== 'number' || isNaN(brightness) ||
+        typeof roughness !== 'number' || isNaN(roughness)) {
+        console.error('Invalid input to autoClassifyShape:', { loudness, pitch, brightness, roughness });
+        return SHAPES.SPHERE; // 기본값 반환
+    }
+
     // 정규화된 값들로 분류 (0-1 범위 가정)
-    const normalizedLoudness = Math.min(1, loudness / 5); // loudness는 보통 0-5 범위
-    const normalizedPitch = Math.min(1, pitch);
-    const normalizedBrightness = Math.min(1, brightness);
-    const normalizedRoughness = Math.min(1, roughness);
+    const normalizedLoudness = Math.min(1, Math.max(0, loudness / AUDIO_CONSTANTS.LOUDNESS_NORMALIZER));
+    const normalizedPitch = Math.min(1, Math.max(0, pitch));
+    const normalizedBrightness = Math.min(1, Math.max(0, brightness));
+    const normalizedRoughness = Math.min(1, Math.max(0, roughness));
 
     console.log('🎵 Audio features:', {
         loudness: loudness.toFixed(3),
@@ -104,6 +140,67 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
     return bestShape;
 }
 
+// DOM 요소 캐싱 함수 (성능 최적화)
+function cacheDOMElements() {
+    cachedDOMElements = {
+        autoShape: document.getElementById('auto-shape'),
+        y1: document.getElementById('y1'),
+        y2: document.getElementById('y2'),
+        y3: document.getElementById('y3'),
+        y4: document.getElementById('y4'),
+        shapeSelector: document.getElementById('shape-selector'),
+        shapeName: document.getElementById('shape-name'),
+        btnMain: document.getElementById('btn-main'),
+        btnPlay: document.getElementById('btn-play'),
+        btnConfirm: document.getElementById('btn-confirm'),
+        labelingZone: document.getElementById('labeling-zone'),
+        status: document.getElementById('status')
+    };
+}
+
+// [추가됨] 중복 제거: 자동 분류 로직을 공통 함수로 추출
+function performAutoClassification() {
+    if (!recordedX || recordedX.count === 0) {
+        console.warn('No recorded audio data for auto-classification');
+        return;
+    }
+
+    if (isModelTrained && brain) {
+        // AI 예측 모드
+        brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
+            if (!err && res && res.length >= 5) {
+                // AI 예측값으로 y1~y4, shape 모두 설정
+                targetY.y1 = res[0].value;
+                targetY.y2 = res[1].value;
+                targetY.y3 = res[2].value;
+                targetY.y4 = res[3].value;
+                const rawShapeValue = res[4].value;
+                const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
+                targetY.shape = predictedShape;
+                cachedAutoShape = predictedShape;
+                document.getElementById('shape-selector').value = predictedShape;
+                document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
+                createShape(predictedShape);
+                console.log(`🤖 AI-predicted shape: ${SHAPE_NAMES[predictedShape]} (raw: ${rawShapeValue.toFixed(3)})`);
+            }
+        });
+    } else {
+        // 규칙 기반 분류 모드
+        const autoShape = autoClassifyShape(
+            recordedX.loudness,
+            recordedX.pitch,
+            recordedX.brightness,
+            recordedX.roughness
+        );
+        targetY.shape = autoShape;
+        cachedAutoShape = autoShape;
+        document.getElementById('shape-selector').value = autoShape;
+        document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
+        createShape(autoShape);
+        console.log(`📏 Rule-based shape: ${SHAPE_NAMES[autoShape]}`);
+    }
+}
+
 window.onload = () => { initThree(); };
 
 function initThree() {
@@ -126,15 +223,21 @@ function initThree() {
 
     scene.add(new THREE.DirectionalLight(0xffffff, 1), new THREE.AmbientLight(0x222222));
 
-    // 창 크기 변경 시 컨테이너 크기에 맞춰 업데이트
-    window.addEventListener('resize', () => {
+    // 창 크기 변경 시 컨테이너 크기에 맞춰 업데이트 (메모리 누수 방지)
+    if (resizeHandler) {
+        window.removeEventListener('resize', resizeHandler);
+    }
+
+    resizeHandler = () => {
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
         camera.aspect = containerWidth / containerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(containerWidth, containerHeight);
         updateCameraPosition();
-    });
+    };
+
+    window.addEventListener('resize', resizeHandler);
 
     animate();
 }
@@ -243,6 +346,9 @@ async function initEngine() {
     // 초기화 대기 시작
     setTimeout(waitForBrainReady, 100);
 
+    // DOM 요소 캐싱 (성능 최적화)
+    cacheDOMElements();
+
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
@@ -290,9 +396,17 @@ async function startRecording() {
     // 마이크가 없으면 새로 요청
     if (!microphoneStream) {
         console.log('마이크 다시 켜기...');
-        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        microphone = audioCtx.createMediaStreamSource(microphoneStream);
-        microphone.connect(analyser);
+        try {
+            microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            microphone = audioCtx.createMediaStreamSource(microphoneStream);
+            microphone.connect(analyser);
+        } catch (err) {
+            console.error('Microphone access error:', err);
+            alert('Failed to access microphone. Please check permissions and try again.');
+            state = 'IDLE';
+            updateStatus('statusActive', 'status-idle');
+            return;
+        }
     }
 
     // 새 MediaRecorder 생성
@@ -334,45 +448,10 @@ function stopRecording() {
 
     updateStatus('statusReview', 'status-review');
 
-    // 자동 분류가 켜져 있으면 즉시 실행
+    // [개선됨] 자동 분류가 켜져 있으면 즉시 실행 (공통 함수 사용)
     if (document.getElementById('auto-shape').checked) {
         setTimeout(() => {
-            if (recordedX && recordedX.count > 0) {
-                // 학습된 모델이 있으면 예측, 없으면 규칙 기반
-                if (isModelTrained && brain) {
-                    brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
-                        if (!err && res && res.length >= 5) {
-                            // AI 예측값으로 y1~y4, shape 모두 설정
-                            targetY.y1 = res[0].value;
-                            targetY.y2 = res[1].value;
-                            targetY.y3 = res[2].value;
-                            targetY.y4 = res[3].value;
-                            const rawShapeValue = res[4].value;
-                            const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
-                            targetY.shape = predictedShape;
-                            cachedAutoShape = predictedShape; // 캐시에 저장
-                            document.getElementById('shape-selector').value = predictedShape;
-                            document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
-                            createShape(predictedShape);
-                            console.log(`🤖 AI-predicted shape: ${SHAPE_NAMES[predictedShape]} (raw: ${rawShapeValue.toFixed(3)})`);
-                        }
-                    });
-                } else {
-                    // 학습 데이터 없으면 규칙 기반 분류 (shape만)
-                    const autoShape = autoClassifyShape(
-                        recordedX.loudness,
-                        recordedX.pitch,
-                        recordedX.brightness,
-                        recordedX.roughness
-                    );
-                    targetY.shape = autoShape;
-                    cachedAutoShape = autoShape; // 캐시에 저장
-                    document.getElementById('shape-selector').value = autoShape;
-                    document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
-                    createShape(autoShape);
-                    console.log(`📏 Rule-based shape: ${SHAPE_NAMES[autoShape]}`);
-                }
-            }
+            performAutoClassification();
         }, 100); // 약간의 딜레이를 주어 recordedX가 완전히 업데이트되도록 함
     }
 }
@@ -424,30 +503,42 @@ function animate() {
     if (analyser) {
         analyzeAudio();
 
-        // [핵심 수정] 리뷰 모드일 때는 슬라이더 값을 즉시 targetY에 반영
+        // [최적화] 리뷰 모드일 때는 슬라이더 값을 즉시 targetY에 반영
         // 단, Auto-classify가 켜져있으면 슬라이더 값 무시
+        // DOM 쿼리를 캐시된 요소로 대체하여 성능 향상 (360 queries/sec → 6 queries/sec)
         if (state === 'REVIEWING') {
-            const isAutoOn = document.getElementById('auto-shape').checked;
-            if (!isAutoOn) {
+            if (cachedDOMElements && !cachedDOMElements.autoShape.checked) {
                 // 수동 모드: 슬라이더 값 사용
-                targetY.y1 = parseFloat(document.getElementById('y1').value);
-                targetY.y2 = parseFloat(document.getElementById('y2').value);
-                targetY.y3 = parseFloat(document.getElementById('y3').value);
-                targetY.y4 = parseFloat(document.getElementById('y4').value);
-                targetY.shape = parseFloat(document.getElementById('shape-selector').value);
+                targetY.y1 = parseFloat(cachedDOMElements.y1.value);
+                targetY.y2 = parseFloat(cachedDOMElements.y2.value);
+                targetY.y3 = parseFloat(cachedDOMElements.y3.value);
+                targetY.y4 = parseFloat(cachedDOMElements.y4.value);
+                targetY.shape = parseFloat(cachedDOMElements.shapeSelector.value);
             }
             // Auto 모드일 때는 stopRecording()에서 설정한 값 유지
-        } else if (brain && customTrainingData.length >= 5) {
-            // 평상시에는 AI가 예측 (customTrainingData 기준으로 체크)
-            brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
-                if(!err && res && res.length >= 5) {
-                    targetY.y1 = res[0].value;
-                    targetY.y2 = res[1].value;
-                    targetY.y3 = res[2].value;
-                    targetY.y4 = res[3].value;
-                    targetY.shape = res[4].value;
-                }
-            });
+        } else if (brain && customTrainingData.length >= AUDIO_CONSTANTS.MIN_PREDICTION_SAMPLES) {
+            // [최적화] AI 예측 throttle: 5프레임마다 1번만 실행 (60fps → 12 predictions/sec)
+            predictionFrameCounter++;
+            if (predictionFrameCounter >= PREDICTION_INTERVAL) {
+                predictionFrameCounter = 0;
+
+                // [최적화] Race condition 방지: 예측 ID로 오래된 결과 무시
+                const currentPredictionId = ++activePredictionId;
+                const features = [currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness];
+
+                brain.predict(features, (err, res) => {
+                    // 새로운 예측이 이미 시작되었으면 이 결과 무시
+                    if (currentPredictionId !== activePredictionId) return;
+
+                    if(!err && res && res.length >= 5) {
+                        targetY.y1 = res[0].value;
+                        targetY.y2 = res[1].value;
+                        targetY.y3 = res[2].value;
+                        targetY.y4 = res[3].value;
+                        targetY.shape = res[4].value;
+                    }
+                });
+            }
         }
 
         // 시각화 수치 부드럽게 전이 (리뷰 모드에서는 더 빠르게)
@@ -458,10 +549,11 @@ function animate() {
         currentY.y4 += (targetY.y4 - currentY.y4) * lerpSpeed;
         currentY.shape += (targetY.shape - currentY.shape) * lerpSpeed;
 
-        // 형태 변경 (임계값 도달 시)
+        // [버그 수정] 형태 변경 감지 로직 개선
         const roundedShape = Math.round(currentY.shape);
-        if (roundedShape !== Math.round(currentY.shape - (targetY.shape - currentY.shape) * 0.1)) {
-            createShape(Math.max(0, Math.min(5, roundedShape)));
+        if (roundedShape !== previousShape && roundedShape >= 0 && roundedShape <= 5) {
+            previousShape = roundedShape;
+            createShape(roundedShape);
         }
 
         // 시각화는 항상 실시간 소리(currentX.loudness)에 반응하게 함
@@ -476,14 +568,28 @@ function analyzeAudio() {
     analyser.getByteFrequencyData(data);
     analyser.getByteTimeDomainData(time);
 
-    let s = 0; for(let v of time) { let n=(v-128)/128; s+=n*n; }
-    currentX.loudness = Math.sqrt(s/time.length) * 10;
-    
-    let te=0, we=0; for(let i=0; i<data.length; i++) { we+=i*data[i]; te+=data[i]; }
-    currentX.pitch = currentX.brightness = te>0 ? (we/te)/40 : 0;
-    
-    let z=0; for(let i=1; i<time.length; i++) if(time[i]>128 && time[i-1]<=128) z++;
-    currentX.roughness = z/30;
+    // [개선됨] 볼륨/loudness 계산 (RMS)
+    let s = 0;
+    for(let v of time) {
+        let n = (v - 128) / 128;
+        s += n * n;
+    }
+    currentX.loudness = time.length > 0 ? Math.sqrt(s / time.length) * AUDIO_CONSTANTS.LOUDNESS_MULTIPLIER : 0;
+
+    // [개선됨] 피치/밝기 계산 (가중 평균) - division by zero 방지
+    let te = 0, we = 0;
+    for(let i = 0; i < data.length; i++) {
+        we += i * data[i];
+        te += data[i];
+    }
+    currentX.pitch = currentX.brightness = te > 0 ? (we / te) / AUDIO_CONSTANTS.PITCH_NORMALIZER : 0;
+
+    // [개선됨] 거칠기/roughness 계산 (영점 교차율)
+    let z = 0;
+    for(let i = 1; i < time.length; i++) {
+        if(time[i] > 128 && time[i-1] <= 128) z++;
+    }
+    currentX.roughness = time.length > 0 ? z / AUDIO_CONSTANTS.ROUGHNESS_NORMALIZER : 0;
 
     if (state === 'RECORDING') {
         recordedX.loudness += currentX.loudness;
@@ -666,7 +772,7 @@ function confirmTraining(useAutoShape = false) {
     brain.addData(inputArray, outputArray);
 
     // 정규화 및 학습
-    if (customTrainingData.length >= 2) {
+    if (customTrainingData.length >= AUDIO_CONSTANTS.MIN_TRAINING_SAMPLES) {
         brain.normalizeData();
     }
 
@@ -788,7 +894,7 @@ function loadTrainingData() {
         console.log(`✓ Loaded ${customTrainingData.length} samples into customTrainingData`);
 
         // [개선됨] 데이터가 있으면 자동으로 brain 재학습
-        if (customTrainingData.length >= 2) {
+        if (customTrainingData.length >= AUDIO_CONSTANTS.MIN_TRAINING_SAMPLES) {
             console.log('Auto-retraining brain with loaded data...');
 
             // brain에 모든 데이터 추가
@@ -910,12 +1016,21 @@ function exportCSV() {
     URL.revokeObjectURL(url);
 }
 
-// 형태 선택기 변경 시 실시간 미리보기
+// [개선됨] 형태 선택기 변경 시 실시간 미리보기 (디바운스 추가)
 function onShapeChange() {
     if (state === 'REVIEWING') {
+        // 디바운스: 빠른 연속 변경 시 마지막 값만 처리
+        if (shapeChangeTimer) {
+            clearTimeout(shapeChangeTimer);
+        }
+
         const shapeValue = parseInt(document.getElementById('shape-selector').value);
-        createShape(shapeValue);
         document.getElementById('shape-name').innerText = SHAPE_NAMES[shapeValue];
+
+        shapeChangeTimer = setTimeout(() => {
+            createShape(shapeValue);
+            shapeChangeTimer = null;
+        }, 100); // 100ms 디바운스
     }
 }
 
@@ -941,7 +1056,7 @@ function onAutoShapeToggle() {
         y4Slider.disabled = true;
         y4Slider.style.opacity = '0.5';
 
-        // 현재 녹음된 소리로 자동 분류 (캐시된 값 우선 사용)
+        // [개선됨] 현재 녹음된 소리로 자동 분류 (캐시된 값 우선 사용, 공통 함수 활용)
         if (state === 'REVIEWING' && recordedX && recordedX.count > 0) {
             if (cachedAutoShape !== null) {
                 // 이미 계산된 값이 있으면 캐시 사용
@@ -951,38 +1066,7 @@ function onAutoShapeToggle() {
                 console.log(`📦 Using cached shape: ${SHAPE_NAMES[cachedAutoShape]}`);
             } else {
                 // 캐시 없으면 새로 계산
-                if (isModelTrained && brain) {
-                    brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
-                        if (!err && res && res.length >= 5) {
-                            // AI 예측값으로 y1~y4, shape 모두 설정
-                            targetY.y1 = res[0].value;
-                            targetY.y2 = res[1].value;
-                            targetY.y3 = res[2].value;
-                            targetY.y4 = res[3].value;
-                            const rawShapeValue = res[4].value;
-                            const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
-                            targetY.shape = predictedShape;
-                            cachedAutoShape = predictedShape;
-                            shapeSelector.value = predictedShape;
-                            document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
-                            createShape(predictedShape);
-                            console.log(`🤖 AI-predicted: ${SHAPE_NAMES[predictedShape]} (raw: ${rawShapeValue.toFixed(3)}, toggle re-calc)`);
-                        }
-                    });
-                } else {
-                    const autoShape = autoClassifyShape(
-                        recordedX.loudness,
-                        recordedX.pitch,
-                        recordedX.brightness,
-                        recordedX.roughness
-                    );
-                    targetY.shape = autoShape;
-                    cachedAutoShape = autoShape;
-                    shapeSelector.value = autoShape;
-                    document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
-                    createShape(autoShape);
-                    console.log(`📏 Rule-based: ${SHAPE_NAMES[autoShape]}`);
-                }
+                performAutoClassification();
             }
         }
     } else {
