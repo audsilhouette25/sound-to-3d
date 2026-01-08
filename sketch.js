@@ -169,30 +169,44 @@ function performAutoClassification() {
         // AI 예측 모드
         brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
             if (!err && res && res.length >= 5) {
-                // AI 예측값으로 y1~y4, shape 모두 설정
-                targetY.y1 = res[0].value;
-                targetY.y2 = res[1].value;
-                targetY.y3 = res[2].value;
-                targetY.y4 = res[3].value;
+                // [수정됨] 모든 예측값에 대한 NaN 체크
+                const y1 = res[0].value;
+                const y2 = res[1].value;
+                const y3 = res[2].value;
+                const y4 = res[3].value;
                 const rawShapeValue = res[4].value;
 
-                // [추가됨] NaN 체크 및 fallback
-                if (isNaN(rawShapeValue)) {
-                    console.warn('⚠️ AI prediction returned NaN for shape. Using rule-based classification as fallback.');
+                // NaN이 하나라도 있으면 fallback 사용
+                if (isNaN(y1) || isNaN(y2) || isNaN(y3) || isNaN(y4) || isNaN(rawShapeValue)) {
+                    console.warn('⚠️ AI prediction returned NaN values. Using rule-based classification as fallback.');
+                    console.log('  Predicted values:', { y1, y2, y3, y4, shape: rawShapeValue });
+
                     const fallbackShape = autoClassifyShape(
                         recordedX.loudness,
                         recordedX.pitch,
                         recordedX.brightness,
                         recordedX.roughness
                     );
+
+                    // Fallback: 기본값 사용
+                    targetY.y1 = 0.5;
+                    targetY.y2 = 0.5;
+                    targetY.y3 = 0.5;
+                    targetY.y4 = 0.5;
                     targetY.shape = fallbackShape;
                     cachedAutoShape = fallbackShape;
                     document.getElementById('shape-selector').value = fallbackShape;
                     document.getElementById('shape-name').innerText = SHAPE_NAMES[fallbackShape];
                     createShape(fallbackShape);
-                    console.log(`📏 Fallback to rule-based shape: ${SHAPE_NAMES[fallbackShape]}`);
+                    console.log(`📏 Fallback to rule-based: shape=${SHAPE_NAMES[fallbackShape]}, y1-y4=0.5`);
                     return;
                 }
+
+                // AI 예측값으로 y1~y4, shape 모두 설정
+                targetY.y1 = y1;
+                targetY.y2 = y2;
+                targetY.y3 = y3;
+                targetY.y4 = y4;
 
                 const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
                 targetY.shape = predictedShape;
@@ -573,11 +587,19 @@ function animate() {
                     if (currentPredictionId !== activePredictionId) return;
 
                     if(!err && res && res.length >= 5) {
-                        targetY.y1 = res[0].value;
-                        targetY.y2 = res[1].value;
-                        targetY.y3 = res[2].value;
-                        targetY.y4 = res[3].value;
-                        targetY.shape = res[4].value;
+                        // [추가됨] NaN 검증: 실시간 예측에서도 NaN 방지
+                        const y1 = res[0].value;
+                        const y2 = res[1].value;
+                        const y3 = res[2].value;
+                        const y4 = res[3].value;
+                        const shape = res[4].value;
+
+                        // 유효한 값만 적용
+                        if (!isNaN(y1)) targetY.y1 = y1;
+                        if (!isNaN(y2)) targetY.y2 = y2;
+                        if (!isNaN(y3)) targetY.y3 = y3;
+                        if (!isNaN(y4)) targetY.y4 = y4;
+                        if (!isNaN(shape)) targetY.shape = shape;
                     }
                 });
             }
