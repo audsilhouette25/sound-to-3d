@@ -50,10 +50,10 @@
                     <span id="shape-name" style="color: #fff;">Sphere</span>
                 </div>
                 <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="auto-shape" onchange="onAutoShapeToggle()" style="width: auto; margin: 0; accent-color: #00ffcc;">
+                    <input type="checkbox" id="auto-shape" onchange="onAutoShapeToggle()" checked style="width: auto; margin: 0; accent-color: #00ffcc;">
                     <label for="auto-shape" style="font-size: 0.85em; color: #00ffcc; cursor: pointer; margin: 0;">Auto-classify shape from sound</label>
                 </div>
-                <input type="range" id="shape-selector" min="0" max="5" step="1" value="0" onchange="onShapeChange()">
+                <input type="range" id="shape-selector" min="0" max="5" step="1" value="0" onchange="onShapeChange()" disabled style="opacity: 0.5;">
                 <div style="position: relative; font-size: 0.65em; color: #666; margin-top: 3px; height: 15px;">
                     <span style="position: absolute; left: 0%; transform: translateX(-5%);">Sphere</span>
                     <span style="position: absolute; left: 20%; transform: translateX(-45%);">Cube</span>
