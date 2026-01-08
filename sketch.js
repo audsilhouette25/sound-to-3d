@@ -38,6 +38,19 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
     const normalizedBrightness = Math.min(1, brightness);
     const normalizedRoughness = Math.min(1, roughness);
 
+    console.log('🎵 Audio features:', {
+        loudness: loudness.toFixed(3),
+        pitch: pitch.toFixed(3),
+        brightness: brightness.toFixed(3),
+        roughness: roughness.toFixed(3),
+        normalized: {
+            loudness: normalizedLoudness.toFixed(3),
+            pitch: normalizedPitch.toFixed(3),
+            brightness: normalizedBrightness.toFixed(3),
+            roughness: normalizedRoughness.toFixed(3)
+        }
+    });
+
     // 분류 로직:
     // - Sphere (0): 부드럽고 균일한 소리 (낮은 roughness, 중간 pitch)
     // - Cube (1): 각진, 명확한 소리 (높은 brightness, 중간 roughness)
@@ -72,6 +85,8 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
     scores[5] = normalizedRoughness * 0.6 +
                 (normalizedBrightness > 0.5 ? 0.4 : 0.2);
 
+    console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
+
     // 가장 높은 점수의 형태 반환
     let maxScore = -1;
     let bestShape = 0;
@@ -82,6 +97,7 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
         }
     }
 
+    console.log(`✅ Selected: ${SHAPE_NAMES[bestShape]} (score: ${maxScore.toFixed(3)})`);
     return bestShape;
 }
 
@@ -400,12 +416,13 @@ function animate() {
             });
         }
 
-        // 시각화 수치 부드럽게 전이
-        currentY.y1 += (targetY.y1 - currentY.y1) * 0.1;
-        currentY.y2 += (targetY.y2 - currentY.y2) * 0.1;
-        currentY.y3 += (targetY.y3 - currentY.y3) * 0.1;
-        currentY.y4 += (targetY.y4 - currentY.y4) * 0.1;
-        currentY.shape += (targetY.shape - currentY.shape) * 0.1;
+        // 시각화 수치 부드럽게 전이 (리뷰 모드에서는 더 빠르게)
+        const lerpSpeed = (state === 'REVIEWING') ? 0.3 : 0.1;
+        currentY.y1 += (targetY.y1 - currentY.y1) * lerpSpeed;
+        currentY.y2 += (targetY.y2 - currentY.y2) * lerpSpeed;
+        currentY.y3 += (targetY.y3 - currentY.y3) * lerpSpeed;
+        currentY.y4 += (targetY.y4 - currentY.y4) * lerpSpeed;
+        currentY.shape += (targetY.shape - currentY.shape) * lerpSpeed;
 
         // 형태 변경 (임계값 도달 시)
         const roundedShape = Math.round(currentY.shape);
