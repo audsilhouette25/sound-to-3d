@@ -118,9 +118,6 @@ function initThree() {
 function updateCameraPosition() {
     // 카메라를 중앙에서 오른쪽으로 치우치게 배치
     camera.position.set(1.5, 0, 3.5);
-
-    // 오브젝트 중심을 바라보도록 설정
-    camera.lookAt(0, 0, 0);
 }
 
 // 형태 생성 함수
