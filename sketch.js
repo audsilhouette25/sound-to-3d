@@ -175,6 +175,25 @@ function performAutoClassification() {
                 targetY.y3 = res[2].value;
                 targetY.y4 = res[3].value;
                 const rawShapeValue = res[4].value;
+
+                // [추가됨] NaN 체크 및 fallback
+                if (isNaN(rawShapeValue)) {
+                    console.warn('⚠️ AI prediction returned NaN for shape. Using rule-based classification as fallback.');
+                    const fallbackShape = autoClassifyShape(
+                        recordedX.loudness,
+                        recordedX.pitch,
+                        recordedX.brightness,
+                        recordedX.roughness
+                    );
+                    targetY.shape = fallbackShape;
+                    cachedAutoShape = fallbackShape;
+                    document.getElementById('shape-selector').value = fallbackShape;
+                    document.getElementById('shape-name').innerText = SHAPE_NAMES[fallbackShape];
+                    createShape(fallbackShape);
+                    console.log(`📏 Fallback to rule-based shape: ${SHAPE_NAMES[fallbackShape]}`);
+                    return;
+                }
+
                 const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
                 targetY.shape = predictedShape;
                 cachedAutoShape = predictedShape;
