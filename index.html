@@ -2,96 +2,61 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>IML Research - Record & Label</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
-    <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+    <title>IML Research Lab - High Precision</title>
+    <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <style>
-        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
-        #ui-layer { position: absolute; top: 20px; left: 20px; width: 320px; z-index: 100; background: rgba(20,20,20,0.95); padding: 25px; border-radius: 15px; border: 1px solid #444; }
-        #header-section { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
-        #title { margin: 0; text-align: left; flex-shrink: 0; }
-        #lang-toggle { padding: 6px 12px; background: #00ffcc; color: #000; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.75em; width: auto; margin: 0; }
-        .status-badge { padding: 5px 10px; border-radius: 4px; font-size: 0.8em; font-weight: bold; margin-bottom: 15px; text-align: center; }
-        .status-idle { background: #444; }
-        .status-recording { background: #ff3366; animation: blink 1s infinite; }
-        .status-review { background: #0077ff; }
-        @keyframes blink { 50% { opacity: 0.5; } }
-
-        button { width: 100%; padding: 12px; margin-top: 8px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; }
-        #btn-main { background: #ff3366; color: white; }
-        #btn-confirm { background: #00ffcc; color: black; }
-        
-        .slider-panel { margin-top: 20px; padding-top: 20px; border-top: 1px solid #333; display: none; }
-        .slider-group { margin-bottom: 15px; }
-        .slider-header { font-size: 0.8em; color: #ccc; display: flex; justify-content: space-between; }
-        input[type=range] { width: 100%; margin-top: 5px; accent-color: #00ffcc; }
-        #three-container { position: absolute; left: 25%; width: 75%; height: 100vh; }
-    </style>
+    <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
 </head>
 <body>
-    <div id="ui-layer">
-        <div id="header-section">
-            <h3 id="title">IML Experiment Panel</h3>
-            <button id="lang-toggle" onclick="toggleLanguage()">한국어</button>
-        </div>
-        <div id="status" class="status-badge status-idle">Ready - Click to Initialize Audio Engine</div>
-        
-        <button id="btn-engine" onclick="initEngine()">Initialize Audio Engine</button>
-        <button id="btn-main" onclick="handleRecord()" style="display:none;">Start Recording</button>
-        <button id="btn-play" onclick="togglePlayback()" style="display:none; background:#0066ff; color:white; margin-top:5px;">▶ Play Recording</button>
+    <div id="ui-container">
+        <header>
+            <h1>IML Research Tool v2.0</h1>
+            <div id="status" class="status-idle">엔진 대기 중</div>
+        </header>
 
-        <div id="labeling-zone" class="slider-panel">
-            <p id="label-instruction" style="font-size: 0.8em; color: #00ffcc; text-align: center;">Define visual characteristics of the recorded sound</p>
+        <section id="audio-engine">
+            <button id="btn-start" onclick="initEngine()">1. 오디오 엔진 가동</button>
+            <button id="btn-record" class="hidden" onclick="handleRecord()">녹음 시작</button>
+        </section>
 
-            <div class="slider-group" style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #333;">
-                <div class="slider-header" style="margin-bottom: 8px;">
-                    <span style="color: #00ffcc;">Base Geometry</span>
-                    <span id="shape-name" style="color: #fff;">Sphere</span>
-                </div>
-                <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="auto-shape" onchange="onAutoShapeToggle()" checked style="width: auto; margin: 0; accent-color: #00ffcc;">
-                    <label for="auto-shape" style="font-size: 0.85em; color: #00ffcc; cursor: pointer; margin: 0;">Auto-classify shape from sound</label>
-                </div>
-                <input type="range" id="shape-selector" min="0" max="5" step="1" value="0" onchange="onShapeChange()" disabled style="opacity: 0.5;">
-                <div style="position: relative; font-size: 0.65em; color: #666; margin-top: 3px; height: 15px;">
-                    <span style="position: absolute; left: 0%; transform: translateX(-5%);">Sphere</span>
-                    <span style="position: absolute; left: 20%; transform: translateX(-45%);">Cube</span>
-                    <span style="position: absolute; left: 40%; transform: translateX(-50%);">Torus</span>
-                    <span style="position: absolute; left: 60%; transform: translateX(-50%);">Cone</span>
-                    <span style="position: absolute; left: 80%; transform: translateX(-52%);">Cylinder</span>
-                    <span style="position: absolute; left: 100%; transform: translateX(-95%);">Octa</span>
-                </div>
+        <section id="monitor-section" class="hidden">
+            <h3>Live Audio Features (X)</h3>
+            <div class="monitor-grid">
+                <div class="m-item">Loudness <span id="val-loud">0.00</span></div>
+                <div class="m-item">Pitch <span id="val-pitch">0.00</span></div>
+                <div class="m-item">Bright <span id="val-bright">0.00</span></div>
+                <div class="m-item">Rough <span id="val-rough">0.00</span></div>
             </div>
+        </section>
 
+        <section id="label-section" class="hidden">
+            <h3>Visual Labeling (Y)</h3>
             <div class="slider-group">
-                <div class="slider-header"><span class="y1-left">Smooth</span><span>y1: Rotation</span><span class="y1-right">Angular</span></div>
-                <input type="range" id="y1" min="0" max="1" step="0.01" value="0.5" disabled style="opacity: 0.5;">
-            </div>
-            <div class="slider-group">
-                <div class="slider-header"><span class="y2-left">Flat</span><span>y2: Sharpness</span><span class="y2-right">Sharp</span></div>
-                <input type="range" id="y2" min="0" max="1" step="0.01" value="0.5" disabled style="opacity: 0.5;">
+                <label>y1: Angularity (각짐)</label>
+                <input type="range" id="y1" min="0" max="1" step="0.01" value="0.2">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span class="y3-left">Smooth</span><span>y3: Texture</span><span class="y3-right">Rough</span></div>
-                <input type="range" id="y3" min="0" max="1" step="0.01" value="0.5" disabled style="opacity: 0.5;">
+                <label>y2: Spikiness (첨예도)</label>
+                <input type="range" id="y2" min="0" max="1" step="0.01" value="0.2">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span class="y4-left">Simple</span><span>y4: Density</span><span class="y4-right">Complex</span></div>
-                <input type="range" id="y4" min="0" max="1" step="0.01" value="0.5" disabled style="opacity: 0.5;">
+                <label>y3: Roughness (질감)</label>
+                <input type="range" id="y3" min="0" max="1" step="0.01" value="0.2">
             </div>
-            <button id="btn-confirm" onclick="confirmTrainingWrapper()" style="display:none;">Confirm Training Data</button>
-        </div>
-        
-        <div id="save-load-zone" style="margin-top:20px; padding-top:15px; border-top:1px solid #333; display:none;">
-            <div style="text-align:center; font-size:0.9em; margin-bottom:10px; color:#00ffcc;">
-                <span id="data-label">Training Data:</span> <span id="data-count">0</span> <span id="samples-label">samples</span>
+            <div class="slider-group">
+                <label>y4: Complexity (밀도)</label>
+                <input type="range" id="y4" min="0" max="1" step="0.01" value="0.2">
             </div>
-            <button id="btn-export" onclick="exportCSV()" style="background:#222; color:#888; font-size:0.75em; padding:8px;">Export Data (CSV)</button>
-            <button id="btn-clear" onclick="clearAllData()" style="background:#441111; color:#ff6666; font-size:0.75em; padding:8px; margin-top:5px;">Clear All Training Data</button>
-        </div>
+            <button id="btn-confirm" onclick="confirmTraining()">데이터 확정 및 학습</button>
+        </section>
+
+        <footer>
+            <div id="data-stats">Samples: <span id="count">0</span></div>
+            <button onclick="exportCSV()">Export CSV</button>
+        </footer>
     </div>
-    <div id="three-container"></div>
+    <div id="canvas-container"></div>
+
     <script src="sketch.js"></script>
 </body>
 </html>
