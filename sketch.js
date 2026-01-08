@@ -90,12 +90,16 @@ window.onload = () => { initThree(); };
 function initThree() {
     const container = document.getElementById('three-container');
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+    // 컨테이너 크기 기준으로 카메라 설정
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    camera = new THREE.PerspectiveCamera(75, containerWidth / containerHeight, 0.1, 1000);
 
     updateCameraPosition();
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(containerWidth, containerHeight);
     container.appendChild(renderer.domElement);
 
     // 기본 형태로 구체 생성
@@ -103,11 +107,13 @@ function initThree() {
 
     scene.add(new THREE.DirectionalLight(0xffffff, 1), new THREE.AmbientLight(0x222222));
 
-    // 창 크기 변경 시 카메라 위치 업데이트
+    // 창 크기 변경 시 컨테이너 크기에 맞춰 업데이트
     window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+        camera.aspect = containerWidth / containerHeight;
         camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(containerWidth, containerHeight);
         updateCameraPosition();
     });
 
