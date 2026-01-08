@@ -342,8 +342,14 @@ function stopRecording() {
                 if (isModelTrained && brain) {
                     brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
                         if (!err && res && res.length >= 5) {
+                            // AI 예측값으로 y1~y4, shape 모두 설정
+                            targetY.y1 = res[0].value;
+                            targetY.y2 = res[1].value;
+                            targetY.y3 = res[2].value;
+                            targetY.y4 = res[3].value;
                             const rawShapeValue = res[4].value;
                             const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
+                            targetY.shape = predictedShape;
                             cachedAutoShape = predictedShape; // 캐시에 저장
                             document.getElementById('shape-selector').value = predictedShape;
                             document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
@@ -352,13 +358,14 @@ function stopRecording() {
                         }
                     });
                 } else {
-                    // 학습 데이터 없으면 규칙 기반 분류
+                    // 학습 데이터 없으면 규칙 기반 분류 (shape만)
                     const autoShape = autoClassifyShape(
                         recordedX.loudness,
                         recordedX.pitch,
                         recordedX.brightness,
                         recordedX.roughness
                     );
+                    targetY.shape = autoShape;
                     cachedAutoShape = autoShape; // 캐시에 저장
                     document.getElementById('shape-selector').value = autoShape;
                     document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
@@ -413,17 +420,23 @@ function togglePlayback() {
 
 function animate() {
     requestAnimationFrame(animate);
-    
+
     if (analyser) {
         analyzeAudio();
 
         // [핵심 수정] 리뷰 모드일 때는 슬라이더 값을 즉시 targetY에 반영
+        // 단, Auto-classify가 켜져있으면 슬라이더 값 무시
         if (state === 'REVIEWING') {
-            targetY.y1 = parseFloat(document.getElementById('y1').value);
-            targetY.y2 = parseFloat(document.getElementById('y2').value);
-            targetY.y3 = parseFloat(document.getElementById('y3').value);
-            targetY.y4 = parseFloat(document.getElementById('y4').value);
-            targetY.shape = parseFloat(document.getElementById('shape-selector').value);
+            const isAutoOn = document.getElementById('auto-shape').checked;
+            if (!isAutoOn) {
+                // 수동 모드: 슬라이더 값 사용
+                targetY.y1 = parseFloat(document.getElementById('y1').value);
+                targetY.y2 = parseFloat(document.getElementById('y2').value);
+                targetY.y3 = parseFloat(document.getElementById('y3').value);
+                targetY.y4 = parseFloat(document.getElementById('y4').value);
+                targetY.shape = parseFloat(document.getElementById('shape-selector').value);
+            }
+            // Auto 모드일 때는 stopRecording()에서 설정한 값 유지
         } else if (brain && customTrainingData.length >= 5) {
             // 평상시에는 AI가 예측 (customTrainingData 기준으로 체크)
             brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
@@ -910,11 +923,23 @@ function onShapeChange() {
 function onAutoShapeToggle() {
     const isAutoOn = document.getElementById('auto-shape').checked;
     const shapeSelector = document.getElementById('shape-selector');
+    const y1Slider = document.getElementById('y1');
+    const y2Slider = document.getElementById('y2');
+    const y3Slider = document.getElementById('y3');
+    const y4Slider = document.getElementById('y4');
 
     if (isAutoOn) {
-        // 자동 모드: 슬라이더 비활성화
+        // 자동 모드: 모든 슬라이더 비활성화
         shapeSelector.disabled = true;
         shapeSelector.style.opacity = '0.5';
+        y1Slider.disabled = true;
+        y1Slider.style.opacity = '0.5';
+        y2Slider.disabled = true;
+        y2Slider.style.opacity = '0.5';
+        y3Slider.disabled = true;
+        y3Slider.style.opacity = '0.5';
+        y4Slider.disabled = true;
+        y4Slider.style.opacity = '0.5';
 
         // 현재 녹음된 소리로 자동 분류 (캐시된 값 우선 사용)
         if (state === 'REVIEWING' && recordedX && recordedX.count > 0) {
@@ -929,8 +954,14 @@ function onAutoShapeToggle() {
                 if (isModelTrained && brain) {
                     brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
                         if (!err && res && res.length >= 5) {
+                            // AI 예측값으로 y1~y4, shape 모두 설정
+                            targetY.y1 = res[0].value;
+                            targetY.y2 = res[1].value;
+                            targetY.y3 = res[2].value;
+                            targetY.y4 = res[3].value;
                             const rawShapeValue = res[4].value;
                             const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
+                            targetY.shape = predictedShape;
                             cachedAutoShape = predictedShape;
                             shapeSelector.value = predictedShape;
                             document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
@@ -945,6 +976,7 @@ function onAutoShapeToggle() {
                         recordedX.brightness,
                         recordedX.roughness
                     );
+                    targetY.shape = autoShape;
                     cachedAutoShape = autoShape;
                     shapeSelector.value = autoShape;
                     document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
@@ -954,9 +986,17 @@ function onAutoShapeToggle() {
             }
         }
     } else {
-        // 수동 모드: 슬라이더 활성화
+        // 수동 모드: 모든 슬라이더 활성화
         shapeSelector.disabled = false;
         shapeSelector.style.opacity = '1';
+        y1Slider.disabled = false;
+        y1Slider.style.opacity = '1';
+        y2Slider.disabled = false;
+        y2Slider.style.opacity = '1';
+        y3Slider.disabled = false;
+        y3Slider.style.opacity = '1';
+        y4Slider.disabled = false;
+        y4Slider.style.opacity = '1';
     }
 }
 
