@@ -116,8 +116,13 @@ function initThree() {
 
 // 카메라 위치 업데이트 함수
 function updateCameraPosition() {
-    // 카메라는 중앙에 배치하고 정면을 바라봄
-    camera.position.set(0, 0, 3.5);
+    // 패널 너비만큼 카메라를 왼쪽으로 오프셋
+    // 패널 너비(~370px) + 여백을 고려하여 화면 비율로 계산
+    const panelWidthPx = 410; // 패널 + 여백
+    const offsetRatio = panelWidthPx / window.innerWidth;
+    const cameraOffsetX = -offsetRatio * 3; // 적절한 오프셋 계산
+
+    camera.position.set(cameraOffsetX, 0, 3.5);
 }
 
 // 형태 생성 함수
@@ -161,8 +166,7 @@ function createShape(shapeType) {
     });
 
     currentMesh = new THREE.Mesh(geometry, material);
-    // 오브젝트를 오른쪽으로 이동
-    currentMesh.position.x = 1.5;
+    // 오브젝트는 중앙에 배치
     scene.add(currentMesh);
     originalVertices = currentMesh.geometry.attributes.position.array.slice();
 }
