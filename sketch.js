@@ -92,8 +92,12 @@ function initThree() {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-    // 카메라를 오른쪽으로 이동
-    camera.position.set(1.8, 0, 3.5);
+    // 패널이 왼쪽에서 떨어진 것처럼, 카메라도 오른쪽에서 같은 비율만큼 떨어뜨림
+    const panelWidth = 370; // 패널 너비
+    const offsetFromEdge = panelWidth / window.innerWidth; // 화면 대비 비율
+    const cameraX = (0.5 - offsetFromEdge) * 6; // 오른쪽 끝에서 패널 너비만큼 왼쪽으로
+
+    camera.position.set(cameraX, 0, 3.5);
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
