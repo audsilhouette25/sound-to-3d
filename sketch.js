@@ -334,16 +334,30 @@ function stopRecording() {
     if (document.getElementById('auto-shape').checked) {
         setTimeout(() => {
             if (recordedX && recordedX.count > 0) {
-                const autoShape = autoClassifyShape(
-                    recordedX.loudness,
-                    recordedX.pitch,
-                    recordedX.brightness,
-                    recordedX.roughness
-                );
-                document.getElementById('shape-selector').value = autoShape;
-                document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
-                createShape(autoShape);
-                console.log(`Auto-classified on review: ${SHAPE_NAMES[autoShape]}`);
+                // 학습된 모델이 있으면 예측, 없으면 규칙 기반
+                if (isModelTrained && brain) {
+                    brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
+                        if (!err && res && res.length >= 5) {
+                            const predictedShape = Math.round(Math.max(0, Math.min(5, res[4].value)));
+                            document.getElementById('shape-selector').value = predictedShape;
+                            document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
+                            createShape(predictedShape);
+                            console.log(`🤖 AI-predicted shape: ${SHAPE_NAMES[predictedShape]}`);
+                        }
+                    });
+                } else {
+                    // 학습 데이터 없으면 규칙 기반 분류
+                    const autoShape = autoClassifyShape(
+                        recordedX.loudness,
+                        recordedX.pitch,
+                        recordedX.brightness,
+                        recordedX.roughness
+                    );
+                    document.getElementById('shape-selector').value = autoShape;
+                    document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
+                    createShape(autoShape);
+                    console.log(`📏 Rule-based shape: ${SHAPE_NAMES[autoShape]}`);
+                }
             }
         }, 100); // 약간의 딜레이를 주어 recordedX가 완전히 업데이트되도록 함
     }
@@ -574,19 +588,12 @@ function confirmTraining(useAutoShape = false) {
         return;
     }
 
-    // 자동 형태 분류 사용
+    // 형태 값 결정: Auto 모드에서는 학습된 모델 또는 규칙 기반, 수동 모드에서는 슬라이더 값
     let shapeValue;
     if (useAutoShape) {
-        shapeValue = autoClassifyShape(
-            recordedX.loudness,
-            recordedX.pitch,
-            recordedX.brightness,
-            recordedX.roughness
-        );
-        console.log(`Auto-classified shape: ${SHAPE_NAMES[shapeValue]} (${shapeValue})`);
-        // UI 업데이트
-        document.getElementById('shape-selector').value = shapeValue;
-        document.getElementById('shape-name').innerText = SHAPE_NAMES[shapeValue];
+        // 이미 UI에 표시된 값 사용 (stopRecording에서 이미 분류됨)
+        shapeValue = parseFloat(document.getElementById('shape-selector').value);
+        console.log(`Using auto-classified shape: ${SHAPE_NAMES[shapeValue]} (${shapeValue})`);
     } else {
         shapeValue = parseFloat(document.getElementById('shape-selector').value);
     }
@@ -904,16 +911,29 @@ function onAutoShapeToggle() {
 
         // 현재 녹음된 소리로 자동 분류
         if (state === 'REVIEWING' && recordedX && recordedX.count > 0) {
-            const autoShape = autoClassifyShape(
-                recordedX.loudness,
-                recordedX.pitch,
-                recordedX.brightness,
-                recordedX.roughness
-            );
-            shapeSelector.value = autoShape;
-            document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
-            createShape(autoShape);
-            console.log(`Auto-classified: ${SHAPE_NAMES[autoShape]}`);
+            // 학습된 모델이 있으면 예측, 없으면 규칙 기반
+            if (isModelTrained && brain) {
+                brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
+                    if (!err && res && res.length >= 5) {
+                        const predictedShape = Math.round(Math.max(0, Math.min(5, res[4].value)));
+                        shapeSelector.value = predictedShape;
+                        document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
+                        createShape(predictedShape);
+                        console.log(`🤖 AI-predicted: ${SHAPE_NAMES[predictedShape]}`);
+                    }
+                });
+            } else {
+                const autoShape = autoClassifyShape(
+                    recordedX.loudness,
+                    recordedX.pitch,
+                    recordedX.brightness,
+                    recordedX.roughness
+                );
+                shapeSelector.value = autoShape;
+                document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
+                createShape(autoShape);
+                console.log(`📏 Rule-based: ${SHAPE_NAMES[autoShape]}`);
+            }
         }
     } else {
         // 수동 모드: 슬라이더 활성화
