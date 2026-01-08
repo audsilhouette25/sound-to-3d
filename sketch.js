@@ -313,6 +313,24 @@ function stopRecording() {
     document.getElementById('btn-play').innerText = t.btnPlay;
 
     updateStatus('statusReview', 'status-review');
+
+    // 자동 분류가 켜져 있으면 즉시 실행
+    if (document.getElementById('auto-shape').checked) {
+        setTimeout(() => {
+            if (recordedX && recordedX.count > 0) {
+                const autoShape = autoClassifyShape(
+                    recordedX.loudness,
+                    recordedX.pitch,
+                    recordedX.brightness,
+                    recordedX.roughness
+                );
+                document.getElementById('shape-selector').value = autoShape;
+                document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
+                createShape(autoShape);
+                console.log(`Auto-classified on review: ${SHAPE_NAMES[autoShape]}`);
+            }
+        }, 100); // 약간의 딜레이를 주어 recordedX가 완전히 업데이트되도록 함
+    }
 }
 
 function saveRecording() {
