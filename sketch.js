@@ -116,8 +116,9 @@ function initThree() {
 
 // 카메라 위치 업데이트 함수
 function updateCameraPosition() {
-    // 카메라는 중앙에 배치
-    camera.position.set(0, 0, 3.5);
+    // 카메라를 오른쪽에 배치하면 오브젝트가 화면 왼쪽에 보임 (패널과 겹치지 않음)
+    camera.position.set(1.8, 0, 3.5);
+    camera.lookAt(0, 0, 0);
 }
 
 // 형태 생성 함수
@@ -161,8 +162,6 @@ function createShape(shapeType) {
     });
 
     currentMesh = new THREE.Mesh(geometry, material);
-    // 오브젝트를 오른쪽으로 이동
-    currentMesh.position.x = 1.5;
     scene.add(currentMesh);
     originalVertices = currentMesh.geometry.attributes.position.array.slice();
 }
