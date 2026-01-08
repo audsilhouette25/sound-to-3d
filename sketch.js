@@ -56,7 +56,7 @@ const AUDIO_CONSTANTS = {
     LOUDNESS_MULTIPLIER: 10,
     PITCH_NORMALIZER: 40,
     ROUGHNESS_NORMALIZER: 30,
-    MIN_TRAINING_SAMPLES: 2,
+    MIN_TRAINING_SAMPLES: 5,  // 2 → 5: Neural network 안정성을 위한 최소 샘플 수 증가
     MIN_PREDICTION_SAMPLES: 5
 };
 
@@ -342,7 +342,11 @@ async function initEngine() {
         inputs: 4,
         outputs: 5,
         task: 'regression',
-        debug: false
+        debug: false,
+        hiddenUnits: 8,           // 더 작은 hidden layer (과적합 방지)
+        learningRate: 0.01,       // 낮은 learning rate (안정적 학습)
+        activationHidden: 'relu', // ReLU activation (학습 안정성)
+        activationOutput: 'sigmoid' // 0-1 범위 출력 보장
     });
 
     console.log('Brain created, waiting for initialization...');
@@ -870,8 +874,8 @@ function confirmTraining(useAutoShape = false) {
 
     updateStatus('statusTraining', 'status-recording');
 
-    // 증분 학습 (epochs 수를 줄여서 빠르게)
-    const epochs = customTrainingData.length < 10 ? 20 : 10;
+    // [개선됨] 적응형 epochs: 데이터 수에 따라 조정 (더 많은 학습으로 안정성 확보)
+    const epochs = customTrainingData.length < 10 ? 50 : 30;
     brain.train({ epochs: epochs }, () => {
         console.log('Training complete!');
         isModelTrained = true;
@@ -997,8 +1001,8 @@ function loadTrainingData() {
             // 정규화
             brain.normalizeData();
 
-            // 백그라운드 학습 (alert 없이)
-            const epochs = Math.max(10, Math.min(50, customTrainingData.length * 2));
+            // [개선됨] 백그라운드 학습 - 충분한 epochs로 안정성 확보
+            const epochs = customTrainingData.length < 10 ? 50 : 30;
             brain.train({ epochs: epochs }, () => {
                 isModelTrained = true;
                 console.log(`✓ Auto-training complete with ${customTrainingData.length} samples`);
@@ -1057,7 +1061,11 @@ function emergencyReset() {
             inputs: 4,
             outputs: 5,
             task: 'regression',
-            debug: false
+            debug: false,
+            hiddenUnits: 8,           // 더 작은 hidden layer (과적합 방지)
+            learningRate: 0.01,       // 낮은 learning rate (안정적 학습)
+            activationHidden: 'relu', // ReLU activation (학습 안정성)
+            activationOutput: 'sigmoid' // 0-1 범위 출력 보장
         });
         console.log('✓ Brain recreated');
 
