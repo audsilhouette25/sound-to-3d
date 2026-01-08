@@ -190,17 +190,24 @@ function performAutoClassification() {
                         recordedX.roughness
                     );
 
-                    // Fallback: 기본값 사용
+                    // [CRITICAL FIX] targetY와 currentY 모두 즉시 리셋 (lerp NaN 전파 방지)
                     targetY.y1 = 0.5;
                     targetY.y2 = 0.5;
                     targetY.y3 = 0.5;
                     targetY.y4 = 0.5;
                     targetY.shape = fallbackShape;
+
+                    currentY.y1 = 0.5;
+                    currentY.y2 = 0.5;
+                    currentY.y3 = 0.5;
+                    currentY.y4 = 0.5;
+                    currentY.shape = fallbackShape;
+
                     cachedAutoShape = fallbackShape;
                     document.getElementById('shape-selector').value = fallbackShape;
                     document.getElementById('shape-name').innerText = SHAPE_NAMES[fallbackShape];
                     createShape(fallbackShape);
-                    console.log(`📏 Fallback to rule-based: shape=${SHAPE_NAMES[fallbackShape]}, y1-y4=0.5`);
+                    console.log(`📏 Fallback to rule-based: shape=${SHAPE_NAMES[fallbackShape]}, y1-y4=0.5 (currentY also reset)`);
                     return;
                 }
 
