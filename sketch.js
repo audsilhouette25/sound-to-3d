@@ -598,8 +598,11 @@ function animate() {
             createShape(roundedShape);
         }
 
-        // 시각화는 항상 실시간 소리(currentX.loudness)에 반응하게 함
-        updateVisuals(currentX.loudness);
+        // [수정] 시각화: REVIEWING 상태에서는 녹음된 평균값 사용, 그 외에는 실시간 값 사용
+        const visualLoudness = (state === 'REVIEWING' && recordedX.count > 0)
+            ? recordedX.loudness
+            : currentX.loudness;
+        updateVisuals(visualLoudness);
     }
     renderer.render(scene, camera);
 }
