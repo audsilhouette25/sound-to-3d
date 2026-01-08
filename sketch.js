@@ -586,6 +586,14 @@ function analyzeAudio() {
     analyser.getByteFrequencyData(data);
     analyser.getByteTimeDomainData(time);
 
+    // 디버깅: 첫 녹음 프레임에서 raw data 확인
+    if (state === 'RECORDING' && recordedX.count === 0) {
+        console.log('First recording frame - raw audio data check:');
+        console.log('  frequencyBinCount:', analyser.frequencyBinCount);
+        console.log('  time data sample:', Array.from(time.slice(0, 10)));
+        console.log('  freq data sample:', Array.from(data.slice(0, 10)));
+    }
+
     // [개선됨] 볼륨/loudness 계산 (RMS)
     let s = 0;
     for(let v of time) {
