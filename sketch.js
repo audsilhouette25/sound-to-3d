@@ -12,6 +12,9 @@ let currentX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
 let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 
+// 현재 리뷰 중인 소리의 자동 분류 결과 캐시
+let cachedAutoShape = null;
+
 // 우리만의 데이터 저장소 (ml5.js 우회)
 let customTrainingData = [];
 let isModelTrained = false; // 모델이 학습되었는지 추적
@@ -268,6 +271,7 @@ async function startRecording() {
     state = 'RECORDING';
     audioChunks = [];
     recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
+    cachedAutoShape = null; // 새 녹음 시작하면 캐시 초기화
 
     // 이전 녹음 데이터 삭제
     if(audioTag) {
@@ -338,11 +342,13 @@ function stopRecording() {
                 if (isModelTrained && brain) {
                     brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
                         if (!err && res && res.length >= 5) {
-                            const predictedShape = Math.round(Math.max(0, Math.min(5, res[4].value)));
+                            const rawShapeValue = res[4].value;
+                            const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
+                            cachedAutoShape = predictedShape; // 캐시에 저장
                             document.getElementById('shape-selector').value = predictedShape;
                             document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
                             createShape(predictedShape);
-                            console.log(`🤖 AI-predicted shape: ${SHAPE_NAMES[predictedShape]}`);
+                            console.log(`🤖 AI-predicted shape: ${SHAPE_NAMES[predictedShape]} (raw: ${rawShapeValue.toFixed(3)})`);
                         }
                     });
                 } else {
@@ -353,6 +359,7 @@ function stopRecording() {
                         recordedX.brightness,
                         recordedX.roughness
                     );
+                    cachedAutoShape = autoShape; // 캐시에 저장
                     document.getElementById('shape-selector').value = autoShape;
                     document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
                     createShape(autoShape);
@@ -909,30 +916,41 @@ function onAutoShapeToggle() {
         shapeSelector.disabled = true;
         shapeSelector.style.opacity = '0.5';
 
-        // 현재 녹음된 소리로 자동 분류
+        // 현재 녹음된 소리로 자동 분류 (캐시된 값 우선 사용)
         if (state === 'REVIEWING' && recordedX && recordedX.count > 0) {
-            // 학습된 모델이 있으면 예측, 없으면 규칙 기반
-            if (isModelTrained && brain) {
-                brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
-                    if (!err && res && res.length >= 5) {
-                        const predictedShape = Math.round(Math.max(0, Math.min(5, res[4].value)));
-                        shapeSelector.value = predictedShape;
-                        document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
-                        createShape(predictedShape);
-                        console.log(`🤖 AI-predicted: ${SHAPE_NAMES[predictedShape]}`);
-                    }
-                });
+            if (cachedAutoShape !== null) {
+                // 이미 계산된 값이 있으면 캐시 사용
+                shapeSelector.value = cachedAutoShape;
+                document.getElementById('shape-name').innerText = SHAPE_NAMES[cachedAutoShape];
+                createShape(cachedAutoShape);
+                console.log(`📦 Using cached shape: ${SHAPE_NAMES[cachedAutoShape]}`);
             } else {
-                const autoShape = autoClassifyShape(
-                    recordedX.loudness,
-                    recordedX.pitch,
-                    recordedX.brightness,
-                    recordedX.roughness
-                );
-                shapeSelector.value = autoShape;
-                document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
-                createShape(autoShape);
-                console.log(`📏 Rule-based: ${SHAPE_NAMES[autoShape]}`);
+                // 캐시 없으면 새로 계산
+                if (isModelTrained && brain) {
+                    brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, res) => {
+                        if (!err && res && res.length >= 5) {
+                            const rawShapeValue = res[4].value;
+                            const predictedShape = Math.round(Math.max(0, Math.min(5, rawShapeValue)));
+                            cachedAutoShape = predictedShape;
+                            shapeSelector.value = predictedShape;
+                            document.getElementById('shape-name').innerText = SHAPE_NAMES[predictedShape];
+                            createShape(predictedShape);
+                            console.log(`🤖 AI-predicted: ${SHAPE_NAMES[predictedShape]} (raw: ${rawShapeValue.toFixed(3)}, toggle re-calc)`);
+                        }
+                    });
+                } else {
+                    const autoShape = autoClassifyShape(
+                        recordedX.loudness,
+                        recordedX.pitch,
+                        recordedX.brightness,
+                        recordedX.roughness
+                    );
+                    cachedAutoShape = autoShape;
+                    shapeSelector.value = autoShape;
+                    document.getElementById('shape-name').innerText = SHAPE_NAMES[autoShape];
+                    createShape(autoShape);
+                    console.log(`📏 Rule-based: ${SHAPE_NAMES[autoShape]}`);
+                }
             }
         }
     } else {
