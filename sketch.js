@@ -398,30 +398,28 @@ async function startRecording() {
         sourceNode = null;
     }
 
-    // 마이크가 없으면 새로 요청
-    if (!microphoneStream) {
-        console.log('마이크 다시 켜기...');
-        try {
-            microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            microphone = audioCtx.createMediaStreamSource(microphoneStream);
-            microphone.connect(analyser);
-            console.log('✓ Microphone connected to analyser');
-        } catch (err) {
-            console.error('Microphone access error:', err);
-            alert('Failed to access microphone. Please check permissions and try again.');
-            state = 'IDLE';
-            updateStatus('statusActive', 'status-idle');
-            return;
+    // [수정] 매번 새로운 마이크 스트림 요청 (stopRecording에서 끊었으므로)
+    console.log('마이크 새로 켜기...');
+    try {
+        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        // AudioContext가 suspended 상태면 resume
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+            console.log('AudioContext resumed');
         }
-    } else {
-        // 마이크는 있지만 analyser 연결 확인
-        console.log('✓ Microphone stream already exists');
-        if (!microphone || !microphone.context) {
-            console.log('Re-creating microphone source node...');
-            microphone = audioCtx.createMediaStreamSource(microphoneStream);
-            microphone.connect(analyser);
-            console.log('✓ Microphone reconnected to analyser');
-        }
+
+        microphone = audioCtx.createMediaStreamSource(microphoneStream);
+        microphone.connect(analyser);
+        console.log('✓ Microphone connected to analyser');
+        console.log('✓ microphone.mediaStream active:', microphoneStream.active);
+        console.log('✓ microphone.mediaStream tracks:', microphoneStream.getTracks().map(t => t.enabled));
+    } catch (err) {
+        console.error('Microphone access error:', err);
+        alert('Failed to access microphone. Please check permissions and try again.');
+        state = 'IDLE';
+        updateStatus('statusActive', 'status-idle');
+        return;
     }
 
     // 새 MediaRecorder 생성
