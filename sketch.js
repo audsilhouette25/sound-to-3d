@@ -13,6 +13,7 @@ let currentLang = 'KR';
 
 // CPU-based rendering variables
 let originalVertices = [];
+let originalParticlePositions = []; // Store original particle positions
 let tempVec = new THREE.Vector3();
 let animTime = 0;
 let cubeParticles = null; // Particle system for cube visual effects
@@ -114,6 +115,16 @@ function createShape(type) {
 
         cubeParticles = new THREE.Points(particleGeo, particleMat);
         scene.add(cubeParticles);
+
+        // Store original particle positions
+        originalParticlePositions = [];
+        for (let i = 0; i < particleCount; i++) {
+            originalParticlePositions.push({
+                x: positions[i*3],
+                y: positions[i*3+1],
+                z: positions[i*3+2]
+            });
+        }
     }
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 24, 48);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 24, 24);
@@ -272,14 +283,15 @@ function updateVisuals() {
         }
 
         // Update particles with dynamic noise-based displacement
-        if (cubeParticles) {
+        if (cubeParticles && originalParticlePositions.length > 0) {
             const particlePos = cubeParticles.geometry.attributes.position;
             const particleColors = cubeParticles.geometry.attributes.color;
 
             for (let i = 0; i < particlePos.count; i++) {
-                const x = particlePos.getX(i);
-                const y = particlePos.getY(i);
-                const z = particlePos.getZ(i);
+                const orig = originalParticlePositions[i];
+                const x = orig.x;
+                const y = orig.y;
+                const z = orig.z;
 
                 // Apply noise-based displacement
                 const noiseScale = 2.0 + currentY.y4 * 8.0;
@@ -304,7 +316,7 @@ function updateVisuals() {
                 else if (Math.abs(y) > Math.abs(z)) ny = Math.sign(y);
                 else nz = Math.sign(z);
 
-                // Apply displacement along normal
+                // Apply displacement along normal from original position
                 particlePos.setXYZ(i,
                     x + nx * displacement,
                     y + ny * displacement,
@@ -315,7 +327,7 @@ function updateVisuals() {
                 const colorT = Math.max(0, Math.min(1, displacement + 0.25));
                 particleColors.setXYZ(i,
                     colorB.r + (colorA.r - colorB.r) * colorT,
-                    colorB.g + (colorA.g - colorA.g) * colorT,
+                    colorB.g + (colorA.g - colorB.g) * colorT,
                     colorB.b + (colorA.b - colorB.b) * colorT
                 );
             }
