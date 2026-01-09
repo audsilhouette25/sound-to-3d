@@ -15,8 +15,86 @@ let currentLang = 'KR';
 let originalVertices = [];
 let tempVec = new THREE.Vector3();
 let animTime = 0;
-let cubeOverlay = null; // High subdivision cube overlay for dynamic graphics
-let cubeOverlayOriginalVertices = [];
+
+// Audio constants for normalization (from main branch)
+const LOUDNESS_NORMALIZER = 2.0;
+const PITCH_NORMALIZER = 1000.0;
+const BRIGHTNESS_NORMALIZER = 10000.0;
+const ROUGHNESS_NORMALIZER = 1.0;
+
+// Rule-based auto-classification (from main branch)
+function autoClassifyShape(audioFeatures) {
+    // Normalize audio features
+    const loud = Math.min(audioFeatures.loudness / LOUDNESS_NORMALIZER, 1.0);
+    const pitch = Math.min(audioFeatures.pitch / PITCH_NORMALIZER, 1.0);
+    const bright = Math.min(audioFeatures.brightness / BRIGHTNESS_NORMALIZER, 1.0);
+    const rough = Math.min(audioFeatures.roughness / ROUGHNESS_NORMALIZER, 1.0);
+
+    // Define shape scores
+    const scores = {
+        sphere: 0,    // 0
+        cube: 0,      // 1
+        torus: 0,     // 2
+        cone: 0,      // 3
+        cylinder: 0,  // 4
+        octahedron: 0 // 5
+    };
+
+    // Sphere: soft, balanced sounds (low roughness, mid loudness)
+    scores.sphere = (1 - rough) * 0.4 + (1 - Math.abs(loud - 0.5)) * 0.3 + (1 - Math.abs(pitch - 0.5)) * 0.3;
+
+    // Cube: strong, stable sounds (high loudness, low pitch variation)
+    scores.cube = loud * 0.4 + (1 - pitch) * 0.3 + rough * 0.3;
+
+    // Torus: rhythmic, circular sounds (mid-high brightness, balanced)
+    scores.torus = bright * 0.4 + (1 - Math.abs(rough - 0.5)) * 0.3 + (1 - Math.abs(loud - 0.6)) * 0.3;
+
+    // Cone: sharp, directional sounds (high pitch, high brightness)
+    scores.cone = pitch * 0.4 + bright * 0.3 + (1 - loud) * 0.3;
+
+    // Cylinder: sustained, stable sounds (low roughness, consistent loudness)
+    scores.cylinder = (1 - rough) * 0.4 + (1 - Math.abs(loud - 0.7)) * 0.4 + (1 - Math.abs(pitch - 0.3)) * 0.2;
+
+    // Octahedron: complex, textured sounds (high roughness, high brightness)
+    scores.octahedron = rough * 0.4 + bright * 0.3 + loud * 0.3;
+
+    // Find shape with highest score
+    let bestShape = 0;
+    let bestScore = scores.sphere;
+    const shapeNames = ['sphere', 'cube', 'torus', 'cone', 'cylinder', 'octahedron'];
+
+    shapeNames.forEach((name, idx) => {
+        if (scores[name] > bestScore) {
+            bestScore = scores[name];
+            bestShape = idx;
+        }
+    });
+
+    return bestShape;
+}
+
+function autoSuggestParameters(audioFeatures) {
+    // Normalize audio features
+    const loud = Math.min(audioFeatures.loudness / LOUDNESS_NORMALIZER, 1.0);
+    const pitch = Math.min(audioFeatures.pitch / PITCH_NORMALIZER, 1.0);
+    const bright = Math.min(audioFeatures.brightness / BRIGHTNESS_NORMALIZER, 1.0);
+    const rough = Math.min(audioFeatures.roughness / ROUGHNESS_NORMALIZER, 1.0);
+
+    // Map audio features to visual parameters
+    // y1: Angularity (higher pitch = more angular)
+    const y1 = pitch * 0.6 + bright * 0.4;
+
+    // y2: Spikiness (higher brightness + roughness = more spiky)
+    const y2 = bright * 0.5 + rough * 0.5;
+
+    // y3: Texture roughness (directly from audio roughness)
+    const y3 = rough * 0.7 + (1 - loud) * 0.3;
+
+    // y4: Density/Complexity (higher brightness + loudness = more complex)
+    const y4 = bright * 0.5 + loud * 0.5;
+
+    return { y1, y2, y3, y4 };
+}
 
 // Noise functions (CPU version of GPU shader noise)
 function hash(n) {
@@ -65,58 +143,20 @@ function createShape(type) {
         currentMesh.geometry.dispose();
     }
 
-    // Remove existing cube overlay if any
-    if (cubeOverlay) {
-        scene.remove(cubeOverlay);
-        cubeOverlay.geometry.dispose();
-        cubeOverlay.material.dispose();
-        cubeOverlay = null;
-        cubeOverlayOriginalVertices = [];
-    }
-
     let geo;
     if (type == 0) geo = new THREE.SphereGeometry(1, 48, 48);
-    else if (type == 1) {
-        geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 1, 1, 1); // Simple cube - scale only
-
-        // Create high subdivision overlay cube for dynamic graphics
-        const overlayGeo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
-        const overlayMat = new THREE.MeshBasicMaterial({
-            vertexColors: true,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.9
-        });
-
-        cubeOverlay = new THREE.Mesh(overlayGeo, overlayMat);
-        scene.add(cubeOverlay);
-
-        // Store original vertices for overlay
-        const overlayPos = cubeOverlay.geometry.attributes.position;
-        const overlayNorm = cubeOverlay.geometry.attributes.normal;
-        for (let i = 0; i < overlayPos.count; i++) {
-            cubeOverlayOriginalVertices.push({
-                pos: new THREE.Vector3(overlayPos.getX(i), overlayPos.getY(i), overlayPos.getZ(i)),
-                normal: new THREE.Vector3(overlayNorm.getX(i), overlayNorm.getY(i), overlayNorm.getZ(i))
-            });
-        }
-
-        // Add color attribute to overlay
-        const overlayColors = new Float32Array(overlayPos.count * 3);
-        cubeOverlay.geometry.setAttribute('color', new THREE.BufferAttribute(overlayColors, 3));
-    }
+    else if (type == 1) geo = new THREE.BoxGeometry(1.5, 1.5, 1.5, 32, 32, 32); // Single high-res cube like main branch
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 24, 48);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 24, 24);
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 24, 24);
     else geo = new THREE.OctahedronGeometry(1.2, 2);
 
     // CPU-based material with vertex colors for dynamic coloring
-    // For cube, make base cube invisible (overlay will be visible)
     const mat = new THREE.MeshBasicMaterial({
         vertexColors: true,
         wireframe: true,
         transparent: true,
-        opacity: type === 1 ? 0.0 : 0.9
+        opacity: 0.9
     });
 
     currentMesh = new THREE.Mesh(geo, mat);
@@ -217,6 +257,7 @@ function animate() {
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
     } else if (customTrainingData.length >= 3) {
+        // AI prediction mode (when training data exists)
         brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
             if(!err) {
                 targetY.y1 = res[0].value; targetY.y2 = res[1].value;
@@ -225,6 +266,19 @@ function animate() {
                 if(predShape !== currentY.shape) { currentY.shape = predShape; createShape(predShape); }
             }
         });
+    } else {
+        // Rule-based auto-classification mode (when no training data)
+        const suggestedShape = autoClassifyShape(currentX);
+        if(suggestedShape !== currentY.shape) {
+            currentY.shape = suggestedShape;
+            createShape(suggestedShape);
+        }
+
+        const suggestedParams = autoSuggestParameters(currentX);
+        targetY.y1 = suggestedParams.y1;
+        targetY.y2 = suggestedParams.y2;
+        targetY.y3 = suggestedParams.y3;
+        targetY.y4 = suggestedParams.y4;
     }
 
     for(let k of ['y1', 'y2', 'y3', 'y4']) {
@@ -242,111 +296,52 @@ function updateVisuals() {
     const pos = currentMesh.geometry.attributes.position;
     const colors = currentMesh.geometry.attributes.color;
 
-    // For cube (type 1), base cube only scales, overlay has dynamic displacement
-    if (currentY.shape === 1) {
-        // Calculate scale based on audio and parameters
-        const noiseVal = noise3D(animTime * 0.4, animTime * 0.4, animTime * 0.4);
-        const scaleAmount = 1.0 + (noiseVal * currentY.y3 * 0.3) + (currentX.loudness * 0.15);
-        currentMesh.scale.set(scaleAmount, scaleAmount, scaleAmount);
+    // Reset scale for all shapes
+    currentMesh.scale.set(1, 1, 1);
 
-        // Update overlay with dynamic vertex displacement
-        if (cubeOverlay && cubeOverlayOriginalVertices.length > 0) {
-            const overlayPos = cubeOverlay.geometry.attributes.position;
-            const overlayColors = cubeOverlay.geometry.attributes.color;
+    // Apply vertex displacement to all shapes uniformly
+    for (let i = 0; i < originalVertices.length; i++) {
+        const orig = originalVertices[i];
+        const p = orig.pos;
+        const n = orig.normal;
 
-            for (let i = 0; i < cubeOverlayOriginalVertices.length; i++) {
-                const orig = cubeOverlayOriginalVertices[i];
-                const p = orig.pos;
-                const n = orig.normal;
+        // Replicate GPU shader noise calculation
+        const noiseScale = 2.0 + currentY.y4 * 8.0;
+        const noiseVal = noise3D(p.x * noiseScale + animTime * 0.4,
+                                 p.y * noiseScale + animTime * 0.4,
+                                 p.z * noiseScale + animTime * 0.4);
 
-                // Replicate GPU shader noise calculation
-                const noiseScale = 2.0 + currentY.y4 * 8.0;
-                const noiseVal = noise3D(p.x * noiseScale + animTime * 0.4,
-                                         p.y * noiseScale + animTime * 0.4,
-                                         p.z * noiseScale + animTime * 0.4);
+        // Angular quantization effect
+        const steps = 1.0 + (1.0 - currentY.y1) * 12.0;
+        const angular = Math.floor(noiseVal * steps) / steps;
+        const finalNoise = noiseVal * (1 - currentY.y1) + angular * currentY.y1;
 
-                // Angular quantization effect
-                const steps = 1.0 + (1.0 - currentY.y1) * 12.0;
-                const angular = Math.floor(noiseVal * steps) / steps;
-                const finalNoise = noiseVal * (1 - currentY.y1) + angular * currentY.y1;
+        // Wave effect
+        const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
 
-                // Wave effect
-                const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
+        // Total displacement
+        const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
 
-                // Total displacement
-                const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
+        // Apply displacement along normal
+        pos.setXYZ(i,
+            p.x + n.x * displacement,
+            p.y + n.y * displacement,
+            p.z + n.z * displacement
+        );
 
-                // Apply displacement along normal
-                overlayPos.setXYZ(i,
-                    p.x + n.x * displacement,
-                    p.y + n.y * displacement,
-                    p.z + n.z * displacement
-                );
+        // Color based on displacement
+        const colorA = { r: 0.0, g: 1.0, b: 0.7 }; // Cyan
+        const colorB = { r: 0.1, g: 0.05, b: 0.4 }; // Dark Blue
+        const t = Math.max(0, Math.min(1, displacement + 0.25));
 
-                // Color based on displacement
-                const colorA = { r: 0.0, g: 1.0, b: 0.7 }; // Cyan
-                const colorB = { r: 0.1, g: 0.05, b: 0.4 }; // Dark Blue
-                const t = Math.max(0, Math.min(1, displacement + 0.25));
-
-                overlayColors.setXYZ(i,
-                    colorB.r + (colorA.r - colorB.r) * t,
-                    colorB.g + (colorA.g - colorB.g) * t,
-                    colorB.b + (colorA.b - colorB.b) * t
-                );
-            }
-
-            overlayPos.needsUpdate = true;
-            overlayColors.needsUpdate = true;
-            cubeOverlay.rotation.y = currentMesh.rotation.y;
-        }
-    } else {
-        // For other shapes, apply vertex displacement as before
-        currentMesh.scale.set(1, 1, 1); // Reset scale
-
-        for (let i = 0; i < originalVertices.length; i++) {
-            const orig = originalVertices[i];
-            const p = orig.pos;
-            const n = orig.normal;
-
-            // Replicate GPU shader noise calculation
-            const noiseScale = 2.0 + currentY.y4 * 8.0;
-            const noiseVal = noise3D(p.x * noiseScale + animTime * 0.4,
-                                     p.y * noiseScale + animTime * 0.4,
-                                     p.z * noiseScale + animTime * 0.4);
-
-            // Angular quantization effect
-            const steps = 1.0 + (1.0 - currentY.y1) * 12.0;
-            const angular = Math.floor(noiseVal * steps) / steps;
-            const finalNoise = noiseVal * (1 - currentY.y1) + angular * currentY.y1;
-
-            // Wave effect
-            const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
-
-            // Total displacement
-            const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
-
-            // Apply displacement along normal
-            pos.setXYZ(i,
-                p.x + n.x * displacement,
-                p.y + n.y * displacement,
-                p.z + n.z * displacement
-            );
-
-            // Color based on displacement (mimicking GPU shader fragment shader)
-            const colorA = { r: 0.0, g: 1.0, b: 0.7 }; // Cyan
-            const colorB = { r: 0.1, g: 0.05, b: 0.4 }; // Dark Blue
-            const t = Math.max(0, Math.min(1, displacement + 0.25));
-
-            colors.setXYZ(i,
-                colorB.r + (colorA.r - colorB.r) * t,
-                colorB.g + (colorA.g - colorB.g) * t,
-                colorB.b + (colorA.b - colorB.b) * t
-            );
-        }
-
-        pos.needsUpdate = true;
+        colors.setXYZ(i,
+            colorB.r + (colorA.r - colorB.r) * t,
+            colorB.g + (colorA.g - colorB.g) * t,
+            colorB.b + (colorA.b - colorB.b) * t
+        );
     }
 
+    pos.needsUpdate = true;
     colors.needsUpdate = true;
 }
 
