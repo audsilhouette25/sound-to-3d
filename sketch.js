@@ -13,10 +13,126 @@ let customTrainingData = [];
 let currentLang = 'KR';
 let micStream = null; // Store microphone stream
 
-// CPU-based rendering variables
-let originalVertices = [];
-let tempVec = new THREE.Vector3();
+// GPU-based rendering variables
 let animTime = 0;
+
+// GPU Vertex Shader - handles displacement
+const vertexShader = `
+    uniform float uTime;
+    uniform float uY1;
+    uniform float uY2;
+    uniform float uY3;
+    uniform float uY4;
+    uniform float uLoudness;
+
+    varying vec3 vColor;
+
+    // 3D Simplex noise function (same as CPU version)
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+    vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+    float snoise(vec3 v) {
+        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+        vec3 i  = floor(v + dot(v, C.yyy));
+        vec3 x0 = v - i + dot(i, C.xxx);
+
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min(g.xyz, l.zxy);
+        vec3 i2 = max(g.xyz, l.zxy);
+
+        vec3 x1 = x0 - i1 + C.xxx;
+        vec3 x2 = x0 - i2 + C.yyy;
+        vec3 x3 = x0 - D.yyy;
+
+        i = mod289(i);
+        vec4 p = permute(permute(permute(
+            i.z + vec4(0.0, i1.z, i2.z, 1.0))
+            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+
+        float n_ = 0.142857142857;
+        vec3 ns = n_ * D.wyz - D.xzx;
+
+        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+
+        vec4 x_ = floor(j * ns.z);
+        vec4 y_ = floor(j - 7.0 * x_);
+
+        vec4 x = x_ *ns.x + ns.yyyy;
+        vec4 y = y_ *ns.x + ns.yyyy;
+        vec4 h = 1.0 - abs(x) - abs(y);
+
+        vec4 b0 = vec4(x.xy, y.xy);
+        vec4 b1 = vec4(x.zw, y.zw);
+
+        vec4 s0 = floor(b0)*2.0 + 1.0;
+        vec4 s1 = floor(b1)*2.0 + 1.0;
+        vec4 sh = -step(h, vec4(0.0));
+
+        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+
+        vec3 p0 = vec3(a0.xy, h.x);
+        vec3 p1 = vec3(a0.zw, h.y);
+        vec3 p2 = vec3(a1.xy, h.z);
+        vec3 p3 = vec3(a1.zw, h.w);
+
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+        p0 *= norm.x;
+        p1 *= norm.y;
+        p2 *= norm.z;
+        p3 *= norm.w;
+
+        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+        m = m * m;
+        return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+    }
+
+    void main() {
+        vec3 pos = position;
+        vec3 norm = normal;
+
+        // Replicate CPU shader noise calculation
+        float noiseScale = 2.0 + uY4 * 8.0;
+        float noiseVal = snoise(pos * noiseScale + vec3(uTime * 0.4));
+
+        // Angular quantization effect
+        float steps = 1.0 + (1.0 - uY1) * 12.0;
+        float angular = floor(noiseVal * steps) / steps;
+        float finalNoise = noiseVal * (1.0 - uY1) + angular * uY1;
+
+        // Wave effect
+        float wave = sin(pos.x * 12.0 + uTime) * uY2 * 0.45;
+
+        // Total displacement
+        float displacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
+
+        // Apply displacement along normal
+        vec3 newPos = pos + norm * displacement;
+
+        // Color based on displacement
+        vec3 colorA = vec3(0.0, 1.0, 0.7); // Cyan
+        vec3 colorB = vec3(0.1, 0.05, 0.4); // Dark Blue
+        float t = clamp(displacement + 0.25, 0.0, 1.0);
+        vColor = mix(colorB, colorA, t);
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
+    }
+`;
+
+// GPU Fragment Shader - handles coloring
+const fragmentShader = `
+    varying vec3 vColor;
+
+    void main() {
+        gl_FragColor = vec4(vColor, 0.9);
+    }
+`;
 
 // Audio constants for normalization (from main branch)
 const LOUDNESS_NORMALIZER = 2.0;
@@ -297,32 +413,24 @@ function createShape(type) {
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
     else geo = new THREE.OctahedronGeometry(1.2, 32);
 
-    // CPU-based material with vertex colors for dynamic coloring
-    const mat = new THREE.MeshBasicMaterial({
-        vertexColors: true,
+    // GPU-based shader material
+    const mat = new THREE.ShaderMaterial({
+        vertexShader: vertexShader,
+        fragmentShader: fragmentShader,
+        uniforms: {
+            uTime: { value: 0.0 },
+            uY1: { value: 0.5 },
+            uY2: { value: 0.5 },
+            uY3: { value: 0.5 },
+            uY4: { value: 0.5 },
+            uLoudness: { value: 0.0 }
+        },
         wireframe: true,
-        transparent: true,
-        opacity: 0.9
+        transparent: true
     });
 
     currentMesh = new THREE.Mesh(geo, mat);
     scene.add(currentMesh);
-
-    // Store original vertex positions and normals
-    originalVertices = [];
-    const pos = currentMesh.geometry.attributes.position;
-    const norm = currentMesh.geometry.attributes.normal;
-
-    for (let i = 0; i < pos.count; i++) {
-        originalVertices.push({
-            pos: new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)),
-            normal: new THREE.Vector3(norm.getX(i), norm.getY(i), norm.getZ(i))
-        });
-    }
-
-    // Add color attribute
-    const colors = new Float32Array(pos.count * 3);
-    currentMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 }
 
 async function initEngine() {
@@ -491,64 +599,18 @@ function animate() {
         currentY[k] += (targetY[k] - currentY[k]) * 0.1;
     }
 
-    // CPU-based vertex displacement (mimicking GPU shader)
-    updateVisuals();
+    // GPU-based rendering: Update shader uniforms
+    if (currentMesh && currentMesh.material.uniforms) {
+        currentMesh.material.uniforms.uTime.value = animTime;
+        currentMesh.material.uniforms.uY1.value = currentY.y1;
+        currentMesh.material.uniforms.uY2.value = currentY.y2;
+        currentMesh.material.uniforms.uY3.value = currentY.y3;
+        currentMesh.material.uniforms.uY4.value = currentY.y4;
+        currentMesh.material.uniforms.uLoudness.value = currentX.loudness;
+    }
 
     currentMesh.rotation.y += 0.005;
     renderer.render(scene, camera);
-}
-
-function updateVisuals() {
-    const pos = currentMesh.geometry.attributes.position;
-    const colors = currentMesh.geometry.attributes.color;
-
-    // Reset scale for all shapes
-    currentMesh.scale.set(1, 1, 1);
-
-    // Apply vertex displacement to all shapes uniformly
-    for (let i = 0; i < originalVertices.length; i++) {
-        const orig = originalVertices[i];
-        const p = orig.pos;
-        const n = orig.normal;
-
-        // Replicate GPU shader noise calculation
-        const noiseScale = 2.0 + currentY.y4 * 8.0;
-        const noiseVal = noise3D(p.x * noiseScale + animTime * 0.4,
-                                 p.y * noiseScale + animTime * 0.4,
-                                 p.z * noiseScale + animTime * 0.4);
-
-        // Angular quantization effect
-        const steps = 1.0 + (1.0 - currentY.y1) * 12.0;
-        const angular = Math.floor(noiseVal * steps) / steps;
-        const finalNoise = noiseVal * (1 - currentY.y1) + angular * currentY.y1;
-
-        // Wave effect
-        const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
-
-        // Total displacement
-        const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
-
-        // Apply displacement along normal
-        pos.setXYZ(i,
-            p.x + n.x * displacement,
-            p.y + n.y * displacement,
-            p.z + n.z * displacement
-        );
-
-        // Color based on displacement
-        const colorA = { r: 0.0, g: 1.0, b: 0.7 }; // Cyan
-        const colorB = { r: 0.1, g: 0.05, b: 0.4 }; // Dark Blue
-        const t = Math.max(0, Math.min(1, displacement + 0.25));
-
-        colors.setXYZ(i,
-            colorB.r + (colorA.r - colorB.r) * t,
-            colorB.g + (colorA.g - colorB.g) * t,
-            colorB.b + (colorA.b - colorB.b) * t
-        );
-    }
-
-    pos.needsUpdate = true;
-    colors.needsUpdate = true;
 }
 
 function analyzeAudio() {
@@ -720,7 +782,8 @@ const translations = {
         y4Label: "y4: 복잡도",
         y4Left: "단순",
         y4Right: "복잡",
-        shapeLabel: "기본 형태"
+        shapeLabel: "기본 형태",
+        shapeNames: ['구', '정육면체', '토러스', '원뿔', '원기둥', '팔면체']
     },
     EN: {
         btnRecord: "Record",
@@ -755,7 +818,8 @@ const translations = {
         y4Label: "y4: Density",
         y4Left: "Simple",
         y4Right: "Complex",
-        shapeLabel: "Base Shape"
+        shapeLabel: "Base Shape",
+        shapeNames: ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron']
     }
 };
 
@@ -859,6 +923,13 @@ function updateAllUIText() {
 
     const samplesLabel = document.getElementById('samples-label');
     if (samplesLabel) samplesLabel.innerText = t.samplesLabel;
+
+    // Update shape name
+    const shapeSelector = document.getElementById('shape-selector');
+    if (shapeSelector) {
+        const currentShapeIndex = parseInt(shapeSelector.value);
+        document.getElementById('shape-name').innerText = t.shapeNames[currentShapeIndex];
+    }
 }
 
 function updateStatus(msg, cls) {
@@ -867,7 +938,7 @@ function updateStatus(msg, cls) {
 }
 
 function changeShape(val) {
-    const names = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron'];
+    const names = translations[currentLang].shapeNames;
     document.getElementById('shape-name').innerText = names[val];
     createShape(val);
 }
