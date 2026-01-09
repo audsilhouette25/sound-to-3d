@@ -109,15 +109,13 @@ async function initEngine() {
         task: 'regression', debug: false
     });
 
-    // localStorage에서 저장된 학습 데이터 불러오기
-    setTimeout(() => {
-        loadTrainingData();
-    }, 500);
-
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
     initThree();
+
+    // localStorage에서 저장된 학습 데이터 즉시 불러오기 (지연 없음)
+    loadTrainingData();
 }
 
 // --- Workflow ---
