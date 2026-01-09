@@ -257,8 +257,12 @@ function saveTrainingData() {
 // localStorage에서 학습 데이터 불러오기
 function loadTrainingData() {
     const saved = localStorage.getItem('soundTo3D_trainingData');
+
+    // 데이터가 없으면 0으로 표시
     if (!saved) {
         console.log('No saved training data');
+        const countEl = document.getElementById('data-count');
+        if (countEl) countEl.innerText = '0';
         return;
     }
 
@@ -267,11 +271,17 @@ function loadTrainingData() {
         if (!saveObj || !Array.isArray(saveObj.data)) {
             console.warn('Invalid data format, clearing');
             localStorage.removeItem('soundTo3D_trainingData');
+            const countEl = document.getElementById('data-count');
+            if (countEl) countEl.innerText = '0';
             return;
         }
 
         customTrainingData = saveObj.data;
         console.log(`✓ Loaded ${customTrainingData.length} samples from localStorage`);
+
+        // 카운트 즉시 업데이트 (학습 전에도 표시)
+        const countEl = document.getElementById('data-count');
+        if (countEl) countEl.innerText = customTrainingData.length;
 
         // brain에 불러온 데이터 추가
         customTrainingData.forEach(item => {
@@ -287,14 +297,13 @@ function loadTrainingData() {
             brain.normalizeData();
             brain.train({ epochs: 32 }, () => {
                 console.log(`✓ Auto-training complete with ${customTrainingData.length} samples`);
-                document.getElementById('data-count').innerText = customTrainingData.length;
             });
-        } else {
-            document.getElementById('data-count').innerText = customTrainingData.length;
         }
     } catch (e) {
         console.error('Load failed:', e);
         localStorage.removeItem('soundTo3D_trainingData');
+        const countEl = document.getElementById('data-count');
+        if (countEl) countEl.innerText = '0';
     }
 }
 
