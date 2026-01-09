@@ -13,126 +13,51 @@ let customTrainingData = [];
 let currentLang = 'KR';
 let micStream = null; // Store microphone stream
 
-// GPU-based rendering variables
-let animTime = 0;
-
-// GPU Vertex Shader - handles displacement
+// --- GPU Shader Code (from 0108수정(지원)) ---
 const vertexShader = `
+    varying float vDisplacement;
+    varying vec3 vNormal;
     uniform float uTime;
-    uniform float uY1;
-    uniform float uY2;
-    uniform float uY3;
-    uniform float uY4;
     uniform float uLoudness;
+    uniform float uY1, uY2, uY3, uY4;
 
-    varying vec3 vColor;
-
-    // 3D Simplex noise function (same as CPU version)
-    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
-    vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
-
-    float snoise(vec3 v) {
-        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-
-        vec3 i  = floor(v + dot(v, C.yyy));
-        vec3 x0 = v - i + dot(i, C.xxx);
-
-        vec3 g = step(x0.yzx, x0.xyz);
-        vec3 l = 1.0 - g;
-        vec3 i1 = min(g.xyz, l.zxy);
-        vec3 i2 = max(g.xyz, l.zxy);
-
-        vec3 x1 = x0 - i1 + C.xxx;
-        vec3 x2 = x0 - i2 + C.yyy;
-        vec3 x3 = x0 - D.yyy;
-
-        i = mod289(i);
-        vec4 p = permute(permute(permute(
-            i.z + vec4(0.0, i1.z, i2.z, 1.0))
-            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-
-        float n_ = 0.142857142857;
-        vec3 ns = n_ * D.wyz - D.xzx;
-
-        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-
-        vec4 x_ = floor(j * ns.z);
-        vec4 y_ = floor(j - 7.0 * x_);
-
-        vec4 x = x_ *ns.x + ns.yyyy;
-        vec4 y = y_ *ns.x + ns.yyyy;
-        vec4 h = 1.0 - abs(x) - abs(y);
-
-        vec4 b0 = vec4(x.xy, y.xy);
-        vec4 b1 = vec4(x.zw, y.zw);
-
-        vec4 s0 = floor(b0)*2.0 + 1.0;
-        vec4 s1 = floor(b1)*2.0 + 1.0;
-        vec4 sh = -step(h, vec4(0.0));
-
-        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
-        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
-
-        vec3 p0 = vec3(a0.xy, h.x);
-        vec3 p1 = vec3(a0.zw, h.y);
-        vec3 p2 = vec3(a1.xy, h.z);
-        vec3 p3 = vec3(a1.zw, h.w);
-
-        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-        p0 *= norm.x;
-        p1 *= norm.y;
-        p2 *= norm.z;
-        p3 *= norm.w;
-
-        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-        m = m * m;
-        return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+    float hash(float n) { return fract(sin(n) * 43758.5453123); }
+    float noise(vec3 x) {
+        vec3 p = floor(x); vec3 f = fract(x);
+        f = f*f*(3.0-2.0*f);
+        float n = p.x + p.y*57.0 + 113.0*p.z;
+        return mix(mix(mix(hash(n+0.0), hash(n+1.0),f.x), mix(hash(n+57.0), hash(n+58.0),f.x),f.y),
+                   mix(mix(hash(n+113.0),hash(n+114.0),f.x), mix(hash(n+170.0),hash(n+171.0),f.x),f.y),f.z);
     }
 
     void main() {
+        vNormal = normal;
         vec3 pos = position;
-        vec3 norm = normal;
-
-        // Replicate CPU shader noise calculation
-        float noiseScale = 2.0 + uY4 * 8.0;
-        float noiseVal = snoise(pos * noiseScale + vec3(uTime * 0.4));
-
-        // Angular quantization effect
-        float steps = 1.0 + (1.0 - uY1) * 12.0;
-        float angular = floor(noiseVal * steps) / steps;
-        float finalNoise = noiseVal * (1.0 - uY1) + angular * uY1;
-
-        // Wave effect
+        float noiseVal = noise(pos * (2.0 + uY4 * 8.0) + uTime * 0.4);
+        float angular = floor(noiseVal * (1.0 + (1.0-uY1)*12.0)) / (1.0 + (1.0-uY1)*12.0);
+        float finalNoise = mix(noiseVal, angular, uY1);
         float wave = sin(pos.x * 12.0 + uTime) * uY2 * 0.45;
 
-        // Total displacement
         float displacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
+        vDisplacement = displacement;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
+    }
+`;
 
-        // Apply displacement along normal
-        vec3 newPos = pos + norm * displacement;
-
-        // Color based on displacement
+const fragmentShader = `
+    varying float vDisplacement;
+    void main() {
         vec3 colorA = vec3(0.0, 1.0, 0.7); // Cyan
         vec3 colorB = vec3(0.1, 0.05, 0.4); // Dark Blue
-        float t = clamp(displacement + 0.25, 0.0, 1.0);
-        vColor = mix(colorB, colorA, t);
-
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
+        vec3 finalColor = mix(colorB, colorA, vDisplacement + 0.25);
+        gl_FragColor = vec4(finalColor, 0.9);
     }
 `;
 
-// GPU Fragment Shader - handles coloring
-const fragmentShader = `
-    varying vec3 vColor;
-
-    void main() {
-        gl_FragColor = vec4(vColor, 0.9);
-    }
-`;
+let shaderUniforms = {
+    uTime: { value: 0 }, uLoudness: { value: 0 },
+    uY1: { value: 0.5 }, uY2: { value: 0.5 }, uY3: { value: 0.5 }, uY4: { value: 0.5 }
+};
 
 // Audio constants for normalization (from main branch)
 const LOUDNESS_NORMALIZER = 2.0;
@@ -413,18 +338,11 @@ function createShape(type) {
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
     else geo = new THREE.OctahedronGeometry(1.2, 32);
 
-    // GPU-based shader material
+    // GPU-based shader material (using shared uniforms from 0108)
     const mat = new THREE.ShaderMaterial({
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
-        uniforms: {
-            uTime: { value: 0.0 },
-            uY1: { value: 0.5 },
-            uY2: { value: 0.5 },
-            uY3: { value: 0.5 },
-            uY4: { value: 0.5 },
-            uLoudness: { value: 0.0 }
-        },
+        uniforms: shaderUniforms,
+        vertexShader,
+        fragmentShader,
         wireframe: true,
         transparent: true
     });
@@ -551,7 +469,8 @@ function animate() {
     if (!analyser) return;
 
     analyzeAudio();
-    animTime += 0.05;
+    shaderUniforms.uTime.value += 0.05;
+    shaderUniforms.uLoudness.value = currentX.loudness;
 
     if (state === 'REVIEWING') {
         targetY.y1 = parseFloat(document.getElementById('y1').value);
@@ -597,16 +516,7 @@ function animate() {
 
     for(let k of ['y1', 'y2', 'y3', 'y4']) {
         currentY[k] += (targetY[k] - currentY[k]) * 0.1;
-    }
-
-    // GPU-based rendering: Update shader uniforms
-    if (currentMesh && currentMesh.material.uniforms) {
-        currentMesh.material.uniforms.uTime.value = animTime;
-        currentMesh.material.uniforms.uY1.value = currentY.y1;
-        currentMesh.material.uniforms.uY2.value = currentY.y2;
-        currentMesh.material.uniforms.uY3.value = currentY.y3;
-        currentMesh.material.uniforms.uY4.value = currentY.y4;
-        currentMesh.material.uniforms.uLoudness.value = currentX.loudness;
+        shaderUniforms[`u${k.toUpperCase()}`].value = currentY[k];
     }
 
     currentMesh.rotation.y += 0.005;
