@@ -144,12 +144,12 @@ function createShape(type) {
     }
 
     let geo;
-    if (type == 0) geo = new THREE.SphereGeometry(1, 48, 48);
-    else if (type == 1) geo = new THREE.BoxGeometry(1.5, 1.5, 1.5, 32, 32, 32); // Single high-res cube like main branch
-    else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 24, 48);
-    else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 24, 24);
-    else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 24, 24);
-    else geo = new THREE.OctahedronGeometry(1.2, 2);
+    if (type == 0) geo = new THREE.SphereGeometry(1, 128, 128); // High resolution like 0108수정(지원)
+    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 64, 64, 64); // Same as 0108수정(지원)
+    else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
+    else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
+    else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
+    else geo = new THREE.OctahedronGeometry(1.2, 32);
 
     // CPU-based material with vertex colors for dynamic coloring
     const mat = new THREE.MeshBasicMaterial({
