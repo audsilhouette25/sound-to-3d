@@ -11,52 +11,33 @@ let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let customTrainingData = [];
 let currentLang = 'KR';
 
-// --- GPU Shader Code ---
-const vertexShader = `
-    varying float vDisplacement;
-    varying vec3 vNormal;
-    uniform float uTime;
-    uniform float uLoudness;
-    uniform float uY1, uY2, uY3, uY4;
+// CPU-based rendering variables
+let originalVertices = [];
+let tempVec = new THREE.Vector3();
+let animTime = 0;
 
-    float hash(float n) { return fract(sin(n) * 43758.5453123); }
-    float noise(vec3 x) {
-        vec3 p = floor(x); vec3 f = fract(x);
-        f = f*f*(3.0-2.0*f);
-        float n = p.x + p.y*57.0 + 113.0*p.z;
-        return mix(mix(mix(hash(n+0.0), hash(n+1.0),f.x), mix(hash(n+57.0), hash(n+58.0),f.x),f.y),
-                   mix(mix(hash(n+113.0),hash(n+114.0),f.x), mix(hash(n+170.0),hash(n+171.0),f.x),f.y),f.z);
-    }
+// Noise functions (CPU version of GPU shader noise)
+function hash(n) {
+    const x = Math.sin(n) * 43758.5453123;
+    return x - Math.floor(x);
+}
 
-    void main() {
-        vNormal = normal;
-        vec3 pos = position;
-        float noiseVal = noise(pos * (2.0 + uY4 * 8.0) + uTime * 0.4);
-        float angular = floor(noiseVal * (1.0 + (1.0-uY1)*12.0)) / (1.0 + (1.0-uY1)*12.0);
-        float finalNoise = mix(noiseVal, angular, uY1);
-        float wave = sin(pos.x * 12.0 + uTime) * uY2 * 0.45;
+function noise3D(x, y, z) {
+    const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z);
+    const fx = x - X, fy = y - Y, fz = z - Z;
+    const u = fx * fx * (3 - 2 * fx);
+    const v = fy * fy * (3 - 2 * fy);
+    const w = fz * fz * (3 - 2 * fz);
 
-        // 원래 강도로 복구
-        float displacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
-        vDisplacement = displacement;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
-    }
-`;
+    const n = X + Y * 57.0 + Z * 113.0;
+    const a = hash(n + 0.0), b = hash(n + 1.0);
+    const c = hash(n + 57.0), d = hash(n + 58.0);
+    const e = hash(n + 113.0), f = hash(n + 114.0);
+    const g = hash(n + 170.0), h = hash(n + 171.0);
 
-const fragmentShader = `
-    varying float vDisplacement;
-    void main() {
-        vec3 colorA = vec3(0.0, 1.0, 0.7); // Cyan
-        vec3 colorB = vec3(0.1, 0.05, 0.4); // Dark Blue
-        vec3 finalColor = mix(colorB, colorA, vDisplacement + 0.25);
-        gl_FragColor = vec4(finalColor, 0.9);
-    }
-`;
-
-let shaderUniforms = {
-    uTime: { value: 0 }, uLoudness: { value: 0 },
-    uY1: { value: 0.5 }, uY2: { value: 0.5 }, uY3: { value: 0.5 }, uY4: { value: 0.5 }
-};
+    return (1 - w) * ((1 - v) * (a * (1 - u) + b * u) + v * (c * (1 - u) + d * u)) +
+           w * ((1 - v) * (e * (1 - u) + f * u) + v * (g * (1 - u) + h * u));
+}
 
 // --- Initialization ---
 function initThree() {
@@ -74,21 +55,42 @@ function initThree() {
 }
 
 function createShape(type) {
-    if (currentMesh) { scene.remove(currentMesh); currentMesh.geometry.dispose(); }
+    if (currentMesh) {
+        scene.remove(currentMesh);
+        currentMesh.geometry.dispose();
+    }
+
     let geo;
-    const res = 128; // 고해상도 (GPU 덕분에 가능)
+    const res = 128;
     if (type == 0) geo = new THREE.SphereGeometry(1, res, res);
-    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 64, 64, 64); // 원래 해상도로 복구
+    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 64, 64, 64);
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
     else geo = new THREE.OctahedronGeometry(1.2, 32);
 
-    const mat = new THREE.ShaderMaterial({
-        uniforms: shaderUniforms, vertexShader, fragmentShader, wireframe: true, transparent: true
+    // CPU-based material with similar visual style
+    const mat = new THREE.MeshBasicMaterial({
+        color: 0x00ffaa,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.9
     });
+
     currentMesh = new THREE.Mesh(geo, mat);
     scene.add(currentMesh);
+
+    // Store original vertex positions and normals
+    originalVertices = [];
+    const pos = currentMesh.geometry.attributes.position;
+    const norm = currentMesh.geometry.attributes.normal;
+
+    for (let i = 0; i < pos.count; i++) {
+        originalVertices.push({
+            pos: new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)),
+            normal: new THREE.Vector3(norm.getX(i), norm.getY(i), norm.getZ(i))
+        });
+    }
 }
 
 async function initEngine() {
@@ -160,8 +162,7 @@ function animate() {
     if (!analyser) return;
 
     analyzeAudio();
-    shaderUniforms.uTime.value += 0.05;
-    shaderUniforms.uLoudness.value = currentX.loudness;
+    animTime += 0.05;
 
     if (state === 'REVIEWING') {
         targetY.y1 = parseFloat(document.getElementById('y1').value);
@@ -182,10 +183,49 @@ function animate() {
 
     for(let k of ['y1', 'y2', 'y3', 'y4']) {
         currentY[k] += (targetY[k] - currentY[k]) * 0.1;
-        shaderUniforms[`u${k.toUpperCase()}`].value = currentY[k];
     }
+
+    // CPU-based vertex displacement (mimicking GPU shader)
+    updateVisuals();
+
     currentMesh.rotation.y += 0.005;
     renderer.render(scene, camera);
+}
+
+function updateVisuals() {
+    const pos = currentMesh.geometry.attributes.position;
+
+    for (let i = 0; i < originalVertices.length; i++) {
+        const orig = originalVertices[i];
+        const p = orig.pos;
+        const n = orig.normal;
+
+        // Replicate GPU shader noise calculation
+        const noiseScale = 2.0 + currentY.y4 * 8.0;
+        const noiseVal = noise3D(p.x * noiseScale + animTime * 0.4,
+                                 p.y * noiseScale + animTime * 0.4,
+                                 p.z * noiseScale + animTime * 0.4);
+
+        // Angular quantization effect
+        const steps = 1.0 + (1.0 - currentY.y1) * 12.0;
+        const angular = Math.floor(noiseVal * steps) / steps;
+        const finalNoise = noiseVal * (1 - currentY.y1) + angular * currentY.y1;
+
+        // Wave effect
+        const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
+
+        // Total displacement
+        const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
+
+        // Apply displacement along normal
+        pos.setXYZ(i,
+            p.x + n.x * displacement,
+            p.y + n.y * displacement,
+            p.z + n.z * displacement
+        );
+    }
+
+    pos.needsUpdate = true;
 }
 
 function analyzeAudio() {
