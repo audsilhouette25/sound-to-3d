@@ -355,7 +355,8 @@ async function initEngine() {
     // Initialize audio context and analyser only - don't get microphone yet
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 512;
+    analyser.fftSize = 2048; // Increased for better audio analysis
+    analyser.smoothingTimeConstant = 0.8; // Smooth out audio analysis
 
     brain = ml5.neuralNetwork({
         inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
@@ -435,24 +436,52 @@ async function handleRecord() {
 
 function saveRecording() {
     const blob = new Blob(audioChunks, { type: 'audio/wav' });
+
+    // Clean up previous audio and source node
+    if (audioTag) {
+        audioTag.pause();
+        audioTag = null;
+    }
+    if (sourceNode) {
+        sourceNode.disconnect();
+        sourceNode = null;
+    }
+
     audioTag = new Audio(URL.createObjectURL(blob));
     audioTag.loop = true;
-    recordedX.loudness /= recordedX.count; recordedX.pitch /= recordedX.count;
-    recordedX.brightness /= recordedX.count; recordedX.roughness /= recordedX.count;
+    audioTag.volume = 1.0;
+
+    recordedX.loudness /= recordedX.count;
+    recordedX.pitch /= recordedX.count;
+    recordedX.brightness /= recordedX.count;
+    recordedX.roughness /= recordedX.count;
 }
 
 function togglePlayback() {
     const playBtn = document.getElementById('btn-play');
     const t = translations[currentLang];
 
+    if (!audioTag) return;
+
     if (audioTag.paused) {
-        // Only create sourceNode once - reuse it if it exists
+        // Create sourceNode only once per recording
         if (!sourceNode) {
-            sourceNode = audioCtx.createMediaElementSource(audioTag);
-            sourceNode.connect(analyser);
-            analyser.connect(audioCtx.destination);
+            try {
+                sourceNode = audioCtx.createMediaElementSource(audioTag);
+                sourceNode.connect(analyser);
+                analyser.connect(audioCtx.destination);
+            } catch (e) {
+                console.error('Error creating audio source:', e);
+                return;
+            }
         }
-        audioTag.play();
+
+        // Resume audio context if suspended
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        audioTag.play().catch(e => console.error('Play error:', e));
         isPlaying = true;
         playBtn.classList.add('playing');
         playBtn.innerText = t.btnPause || '재생 중지';
