@@ -147,7 +147,12 @@ function createShape(type) {
 
     let geo;
     if (type == 0) geo = new THREE.SphereGeometry(1, 128, 128); // High resolution like 0108수정(지원)
-    else if (type == 1) geo = new THREE.IcosahedronGeometry(1.4, 3); // Subdivision 3 for smoother angular shape with connected vertices
+    else if (type == 1) {
+        // Use BoxGeometry with mergeVertices to connect edges
+        geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 64, 64, 64);
+        geo = THREE.BufferGeometryUtils.mergeVertices(geo, 0.0001);
+        geo.computeVertexNormals();
+    }
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
