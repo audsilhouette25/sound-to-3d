@@ -148,10 +148,9 @@ function createShape(type) {
     let geo;
     if (type == 0) geo = new THREE.SphereGeometry(1, 128, 128); // High resolution like 0108수정(지원)
     else if (type == 1) {
-        geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 64, 64, 64); // Same as 0108수정(지원)
-        // Merge vertices for cube to prevent face tearing
-        geo = THREE.BufferGeometryUtils.mergeVertices(geo);
-        geo.computeVertexNormals(); // Recompute normals after merging
+        // Use subdivided octahedron for cube-like shape with connected vertices
+        // Low subdivision creates a cube-like appearance while preventing face tearing
+        geo = new THREE.OctahedronGeometry(1.4, 4);
     }
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
