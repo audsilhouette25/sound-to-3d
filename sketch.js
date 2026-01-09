@@ -148,8 +148,8 @@ function createShape(type) {
     let geo;
     if (type == 0) geo = new THREE.SphereGeometry(1, 128, 128); // High resolution like 0108수정(지원)
     else if (type == 1) {
-        // Use RoundedBoxGeometry for smooth cube with connected vertices
-        geo = new RoundedBoxGeometry(1.4, 1.4, 1.4, 16, 0.1);
+        // Use Three.js RoundedBoxGeometry for smooth cube with connected vertices
+        geo = new THREE.RoundedBoxGeometry(1.4, 1.4, 1.4, 16, 0.1);
     }
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
