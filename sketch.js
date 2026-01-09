@@ -64,12 +64,12 @@ function createShape(type) {
     }
 
     let geo;
-    if (type == 0) geo = new THREE.SphereGeometry(1, 64, 64);
-    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
-    else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 32, 64);
-    else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 32, 32);
-    else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 32, 32);
-    else geo = new THREE.OctahedronGeometry(1.2, 3);
+    if (type == 0) geo = new THREE.SphereGeometry(1, 48, 48);
+    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 1, 1, 1); // No subdivisions for clean wireframe
+    else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 24, 48);
+    else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 24, 24);
+    else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 24, 24);
+    else geo = new THREE.OctahedronGeometry(1.2, 2);
 
     // CPU-based material with vertex colors for dynamic coloring
     const mat = new THREE.MeshBasicMaterial({
