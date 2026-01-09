@@ -65,7 +65,7 @@ function createShape(type) {
 
     let geo;
     if (type == 0) geo = new THREE.SphereGeometry(1, 48, 48);
-    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 1, 1, 1); // No subdivisions for clean wireframe
+    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32); // High subdivision for dynamic graphics
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 24, 48);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 24, 24);
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 24, 24);
