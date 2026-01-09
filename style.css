@@ -10,7 +10,8 @@ body { margin: 0; background: #050505; color: #eee; font-family: sans-serif; ove
 h1 { font-size: 1.2rem; color: #00ffcc; margin: 0; }
 #data-display { background: #000; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 0.8em; margin-top: 15px; border: 1px solid #222; }
 #data-display p { margin: 5px 0; color: #888; }
-#data-display span { float: right; color: #00ffcc; }
+#data-display p span:first-child::after { content: ":"; margin-right: 5px; }
+#data-display p span:last-child { float: right; color: #00ffcc; }
 
 .status-badge { padding: 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; margin-top: 10px; text-align: center; }
 .status-idle { background: #333; color: #888; }
