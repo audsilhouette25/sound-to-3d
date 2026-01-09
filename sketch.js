@@ -43,11 +43,14 @@ function noise3D(x, y, z) {
 function initThree() {
     const container = document.getElementById('three-container');
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+    // Calculate right panel width (viewport width - left panel width)
+    const rightPanelWidth = window.innerWidth - 320;
+    camera = new THREE.PerspectiveCamera(75, rightPanelWidth / window.innerHeight, 0.1, 1000);
     camera.position.z = 3.5;
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(rightPanelWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
 
     createShape(0);

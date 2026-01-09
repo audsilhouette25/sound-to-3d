@@ -27,4 +27,10 @@ button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weig
 button:hover { filter: brightness(1.2); }
 
 @keyframes blink { 50% { opacity: 0.4; } }
-#three-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
+#three-container {
+    width: calc(100vw - 320px);
+    height: 100vh;
+    position: absolute;
+    top: 0;
+    left: 320px;
+}
