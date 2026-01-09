@@ -363,7 +363,7 @@ function updateVisuals() {
 
     // Cube-specific displacement reduction to prevent tearing
     const isCube = currentY.shape === 1;
-    const displacementMultiplier = isCube ? 0.25 : 1.0;
+    const displacementMultiplier = isCube ? 0.15 : 1.0;
 
     // Apply vertex displacement to all shapes uniformly
     for (let i = 0; i < originalVertices.length; i++) {
