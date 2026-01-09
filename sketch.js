@@ -361,6 +361,10 @@ function updateVisuals() {
     // Reset scale for all shapes
     currentMesh.scale.set(1, 1, 1);
 
+    // Cube-specific displacement reduction to prevent tearing
+    const isCube = currentY.shape === 1;
+    const displacementMultiplier = isCube ? 0.25 : 1.0;
+
     // Apply vertex displacement to all shapes uniformly
     for (let i = 0; i < originalVertices.length; i++) {
         const orig = originalVertices[i];
@@ -381,8 +385,8 @@ function updateVisuals() {
         // Wave effect
         const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
 
-        // Total displacement
-        const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
+        // Total displacement (reduced for cube to prevent tearing)
+        const displacement = ((finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave) * displacementMultiplier;
 
         // Apply displacement along normal
         pos.setXYZ(i,
