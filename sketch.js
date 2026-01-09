@@ -15,6 +15,7 @@ let currentLang = 'KR';
 let originalVertices = [];
 let tempVec = new THREE.Vector3();
 let animTime = 0;
+let cubeParticles = null; // Particle system for cube visual effects
 
 // Noise functions (CPU version of GPU shader noise)
 function hash(n) {
@@ -63,9 +64,57 @@ function createShape(type) {
         currentMesh.geometry.dispose();
     }
 
+    // Remove existing particles if any
+    if (cubeParticles) {
+        scene.remove(cubeParticles);
+        cubeParticles.geometry.dispose();
+        cubeParticles.material.dispose();
+        cubeParticles = null;
+    }
+
     let geo;
     if (type == 0) geo = new THREE.SphereGeometry(1, 48, 48);
-    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32); // High subdivision for dynamic graphics
+    else if (type == 1) {
+        geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 1, 1, 1); // Simple cube - scale only
+
+        // Create particle system for cube
+        const particleCount = 2000;
+        const particleGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            // Random position around cube surface
+            const face = Math.floor(Math.random() * 6);
+            const u = (Math.random() - 0.5) * 1.4;
+            const v = (Math.random() - 0.5) * 1.4;
+
+            if (face === 0) { positions[i*3] = 0.7; positions[i*3+1] = u; positions[i*3+2] = v; }
+            else if (face === 1) { positions[i*3] = -0.7; positions[i*3+1] = u; positions[i*3+2] = v; }
+            else if (face === 2) { positions[i*3] = u; positions[i*3+1] = 0.7; positions[i*3+2] = v; }
+            else if (face === 3) { positions[i*3] = u; positions[i*3+1] = -0.7; positions[i*3+2] = v; }
+            else if (face === 4) { positions[i*3] = u; positions[i*3+1] = v; positions[i*3+2] = 0.7; }
+            else { positions[i*3] = u; positions[i*3+1] = v; positions[i*3+2] = -0.7; }
+
+            colors[i*3] = 0.0;
+            colors[i*3+1] = 1.0;
+            colors[i*3+2] = 0.7;
+        }
+
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particleGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const particleMat = new THREE.PointsMaterial({
+            size: 0.02,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+
+        cubeParticles = new THREE.Points(particleGeo, particleMat);
+        scene.add(cubeParticles);
+    }
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 24, 48);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 24, 24);
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 24, 24);
@@ -202,48 +251,127 @@ function updateVisuals() {
     const pos = currentMesh.geometry.attributes.position;
     const colors = currentMesh.geometry.attributes.color;
 
-    for (let i = 0; i < originalVertices.length; i++) {
-        const orig = originalVertices[i];
-        const p = orig.pos;
-        const n = orig.normal;
+    // For cube (type 1), only apply scale transformation
+    if (currentY.shape === 1) {
+        // Calculate scale based on audio and parameters
+        const noiseVal = noise3D(animTime * 0.4, animTime * 0.4, animTime * 0.4);
+        const scaleAmount = 1.0 + (noiseVal * currentY.y3 * 0.3) + (currentX.loudness * 0.15);
+        currentMesh.scale.set(scaleAmount, scaleAmount, scaleAmount);
 
-        // Replicate GPU shader noise calculation
-        const noiseScale = 2.0 + currentY.y4 * 8.0;
-        const noiseVal = noise3D(p.x * noiseScale + animTime * 0.4,
-                                 p.y * noiseScale + animTime * 0.4,
-                                 p.z * noiseScale + animTime * 0.4);
-
-        // Angular quantization effect
-        const steps = 1.0 + (1.0 - currentY.y1) * 12.0;
-        const angular = Math.floor(noiseVal * steps) / steps;
-        const finalNoise = noiseVal * (1 - currentY.y1) + angular * currentY.y1;
-
-        // Wave effect
-        const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
-
-        // Total displacement
-        const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
-
-        // Apply displacement along normal
-        pos.setXYZ(i,
-            p.x + n.x * displacement,
-            p.y + n.y * displacement,
-            p.z + n.z * displacement
-        );
-
-        // Color based on displacement (mimicking GPU shader fragment shader)
+        // Color vertices based on scale
         const colorA = { r: 0.0, g: 1.0, b: 0.7 }; // Cyan
         const colorB = { r: 0.1, g: 0.05, b: 0.4 }; // Dark Blue
-        const t = Math.max(0, Math.min(1, displacement + 0.25));
+        const t = Math.max(0, Math.min(1, (scaleAmount - 1.0) * 2));
 
-        colors.setXYZ(i,
-            colorB.r + (colorA.r - colorB.r) * t,
-            colorB.g + (colorA.g - colorB.g) * t,
-            colorB.b + (colorA.b - colorB.b) * t
-        );
+        for (let i = 0; i < originalVertices.length; i++) {
+            colors.setXYZ(i,
+                colorB.r + (colorA.r - colorB.r) * t,
+                colorB.g + (colorA.g - colorB.g) * t,
+                colorB.b + (colorA.b - colorB.b) * t
+            );
+        }
+
+        // Update particles with dynamic noise-based displacement
+        if (cubeParticles) {
+            const particlePos = cubeParticles.geometry.attributes.position;
+            const particleColors = cubeParticles.geometry.attributes.color;
+
+            for (let i = 0; i < particlePos.count; i++) {
+                const x = particlePos.getX(i);
+                const y = particlePos.getY(i);
+                const z = particlePos.getZ(i);
+
+                // Apply noise-based displacement
+                const noiseScale = 2.0 + currentY.y4 * 8.0;
+                const noiseVal = noise3D(x * noiseScale + animTime * 0.4,
+                                         y * noiseScale + animTime * 0.4,
+                                         z * noiseScale + animTime * 0.4);
+
+                // Angular quantization effect
+                const steps = 1.0 + (1.0 - currentY.y1) * 12.0;
+                const angular = Math.floor(noiseVal * steps) / steps;
+                const finalNoise = noiseVal * (1 - currentY.y1) + angular * currentY.y1;
+
+                // Wave effect
+                const wave = Math.sin(x * 12.0 + animTime) * currentY.y2 * 0.45;
+
+                // Total displacement
+                const displacement = (finalNoise * currentY.y3 * 0.5) + (currentX.loudness * 0.4) + wave;
+
+                // Determine normal based on which face the particle is on
+                let nx = 0, ny = 0, nz = 0;
+                if (Math.abs(x) > Math.abs(y) && Math.abs(x) > Math.abs(z)) nx = Math.sign(x);
+                else if (Math.abs(y) > Math.abs(z)) ny = Math.sign(y);
+                else nz = Math.sign(z);
+
+                // Apply displacement along normal
+                particlePos.setXYZ(i,
+                    x + nx * displacement,
+                    y + ny * displacement,
+                    z + nz * displacement
+                );
+
+                // Color based on displacement
+                const colorT = Math.max(0, Math.min(1, displacement + 0.25));
+                particleColors.setXYZ(i,
+                    colorB.r + (colorA.r - colorB.r) * colorT,
+                    colorB.g + (colorA.g - colorA.g) * colorT,
+                    colorB.b + (colorA.b - colorB.b) * colorT
+                );
+            }
+
+            particlePos.needsUpdate = true;
+            particleColors.needsUpdate = true;
+            cubeParticles.rotation.y = currentMesh.rotation.y;
+        }
+    } else {
+        // For other shapes, apply vertex displacement as before
+        currentMesh.scale.set(1, 1, 1); // Reset scale
+
+        for (let i = 0; i < originalVertices.length; i++) {
+            const orig = originalVertices[i];
+            const p = orig.pos;
+            const n = orig.normal;
+
+            // Replicate GPU shader noise calculation
+            const noiseScale = 2.0 + currentY.y4 * 8.0;
+            const noiseVal = noise3D(p.x * noiseScale + animTime * 0.4,
+                                     p.y * noiseScale + animTime * 0.4,
+                                     p.z * noiseScale + animTime * 0.4);
+
+            // Angular quantization effect
+            const steps = 1.0 + (1.0 - currentY.y1) * 12.0;
+            const angular = Math.floor(noiseVal * steps) / steps;
+            const finalNoise = noiseVal * (1 - currentY.y1) + angular * currentY.y1;
+
+            // Wave effect
+            const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
+
+            // Total displacement
+            const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
+
+            // Apply displacement along normal
+            pos.setXYZ(i,
+                p.x + n.x * displacement,
+                p.y + n.y * displacement,
+                p.z + n.z * displacement
+            );
+
+            // Color based on displacement (mimicking GPU shader fragment shader)
+            const colorA = { r: 0.0, g: 1.0, b: 0.7 }; // Cyan
+            const colorB = { r: 0.1, g: 0.05, b: 0.4 }; // Dark Blue
+            const t = Math.max(0, Math.min(1, displacement + 0.25));
+
+            colors.setXYZ(i,
+                colorB.r + (colorA.r - colorB.r) * t,
+                colorB.g + (colorA.g - colorB.g) * t,
+                colorB.b + (colorA.b - colorB.b) * t
+            );
+        }
+
+        pos.needsUpdate = true;
     }
 
-    pos.needsUpdate = true;
     colors.needsUpdate = true;
 }
 
