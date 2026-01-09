@@ -4,6 +4,7 @@ let audioTag = null;
 let brain;
 let scene, camera, renderer, currentMesh;
 let state = 'IDLE'; // IDLE, RECORDING, REVIEWING
+let isPlaying = false; // Track if audio is playing
 let recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
 let currentX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
 let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
@@ -209,6 +210,7 @@ async function handleRecord() {
         state = 'RECORDING'; audioChunks = [];
         recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
         if(audioTag) audioTag.pause();
+        isPlaying = false; // Reset playing state
         sourceNode = null; // Reset sourceNode for new recording
 
         try {
@@ -277,10 +279,12 @@ function togglePlayback() {
             analyser.connect(audioCtx.destination);
         }
         audioTag.play();
+        isPlaying = true;
         playBtn.classList.add('playing');
         playBtn.innerText = t.btnPause || '재생 중지';
     } else {
         audioTag.pause();
+        isPlaying = false;
         playBtn.classList.remove('playing');
         playBtn.innerText = t.btnPlay || '소리 반복 재생';
     }
@@ -389,8 +393,8 @@ function updateVisuals() {
 }
 
 function analyzeAudio() {
-    // If in REVIEWING state, use recorded averages instead of live audio
-    if (state === 'REVIEWING') {
+    // If in REVIEWING state and NOT playing, use recorded averages
+    if (state === 'REVIEWING' && !isPlaying) {
         currentX.loudness = recordedX.loudness;
         currentX.pitch = recordedX.pitch;
         currentX.brightness = recordedX.brightness;
@@ -403,7 +407,7 @@ function analyzeAudio() {
         return;
     }
 
-    // Only analyze live audio if not in REVIEWING state
+    // Analyze live audio when RECORDING or when REVIEWING and playing
     const data = new Uint8Array(analyser.frequencyBinCount);
     const time = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
