@@ -10,6 +10,7 @@ let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let customTrainingData = [];
 let currentLang = 'KR';
+let micStream = null; // Store microphone stream
 
 // CPU-based rendering variables
 let originalVertices = [];
@@ -180,17 +181,10 @@ function createShape(type) {
 }
 
 async function initEngine() {
+    // Initialize audio context and analyser only - don't get microphone yet
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    microphone = audioCtx.createMediaStreamSource(stream);
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
-    // Don't connect microphone initially - only connect when recording starts
-    // microphone.connect(analyser);
-
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = saveRecording;
 
     brain = ml5.neuralNetwork({
         inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
@@ -208,22 +202,35 @@ async function initEngine() {
 }
 
 // --- Workflow ---
-function handleRecord() {
+async function handleRecord() {
     const t = translations[currentLang];
     if (state === 'IDLE' || state === 'REVIEWING') {
-        // Start recording - turn on microphone
+        // Start recording - get microphone permission and turn on
         state = 'RECORDING'; audioChunks = [];
         recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
         if(audioTag) audioTag.pause();
 
-        // Connect microphone to analyser
-        if (microphone && analyser) {
-            microphone.connect(analyser);
-        }
+        try {
+            // Request microphone access only when recording starts
+            if (!micStream) {
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioCtx.createMediaStreamSource(micStream);
+                mediaRecorder = new MediaRecorder(micStream);
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = saveRecording;
+            }
 
-        mediaRecorder.start();
-        document.getElementById('btn-main').innerText = t.btnStop;
-        updateStatus('Recording...', 'status-recording');
+            // Connect microphone to analyser
+            microphone.connect(analyser);
+            mediaRecorder.start();
+
+            document.getElementById('btn-main').innerText = t.btnStop;
+            updateStatus('Recording...', 'status-recording');
+        } catch (err) {
+            console.error('Microphone access denied:', err);
+            alert('마이크 접근 권한이 필요합니다.');
+            state = 'IDLE';
+        }
     } else {
         // Stop recording - turn off microphone
         mediaRecorder.stop();
