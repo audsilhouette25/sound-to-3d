@@ -61,17 +61,16 @@ function createShape(type) {
     }
 
     let geo;
-    const res = 128;
-    if (type == 0) geo = new THREE.SphereGeometry(1, res, res);
-    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 64, 64, 64);
-    else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
-    else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
-    else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
-    else geo = new THREE.OctahedronGeometry(1.2, 32);
+    if (type == 0) geo = new THREE.SphereGeometry(1, 64, 64);
+    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
+    else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 32, 64);
+    else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 32, 32);
+    else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 32, 32);
+    else geo = new THREE.OctahedronGeometry(1.2, 3);
 
-    // CPU-based material with similar visual style
+    // CPU-based material with vertex colors for dynamic coloring
     const mat = new THREE.MeshBasicMaterial({
-        color: 0x00ffaa,
+        vertexColors: true,
         wireframe: true,
         transparent: true,
         opacity: 0.9
@@ -91,6 +90,10 @@ function createShape(type) {
             normal: new THREE.Vector3(norm.getX(i), norm.getY(i), norm.getZ(i))
         });
     }
+
+    // Add color attribute
+    const colors = new Float32Array(pos.count * 3);
+    currentMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 }
 
 async function initEngine() {
@@ -194,6 +197,7 @@ function animate() {
 
 function updateVisuals() {
     const pos = currentMesh.geometry.attributes.position;
+    const colors = currentMesh.geometry.attributes.color;
 
     for (let i = 0; i < originalVertices.length; i++) {
         const orig = originalVertices[i];
@@ -223,9 +227,21 @@ function updateVisuals() {
             p.y + n.y * displacement,
             p.z + n.z * displacement
         );
+
+        // Color based on displacement (mimicking GPU shader fragment shader)
+        const colorA = { r: 0.0, g: 1.0, b: 0.7 }; // Cyan
+        const colorB = { r: 0.1, g: 0.05, b: 0.4 }; // Dark Blue
+        const t = Math.max(0, Math.min(1, displacement + 0.25));
+
+        colors.setXYZ(i,
+            colorB.r + (colorA.r - colorB.r) * t,
+            colorB.g + (colorA.g - colorB.g) * t,
+            colorB.b + (colorA.b - colorB.b) * t
+        );
     }
 
     pos.needsUpdate = true;
+    colors.needsUpdate = true;
 }
 
 function analyzeAudio() {
