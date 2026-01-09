@@ -196,6 +196,10 @@ async function initEngine() {
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
+
+    // Update all UI text with current language
+    updateAllUIText();
+
     initThree();
 
     // localStorage에서 저장된 학습 데이터 즉시 불러오기 (지연 없음)
@@ -228,7 +232,7 @@ async function handleRecord() {
             mediaRecorder.start();
 
             document.getElementById('btn-main').innerText = t.btnStop;
-            updateStatus('Recording...', 'status-recording');
+            updateStatus(t.statusRecording, 'status-recording');
         } catch (err) {
             console.error('Microphone access denied:', err);
             alert('마이크 접근 권한이 필요합니다.');
@@ -255,7 +259,7 @@ async function handleRecord() {
         document.getElementById('labeling-zone').style.display = 'block';
         document.getElementById('btn-play').style.display = 'block';
         document.getElementById('btn-main').innerText = t.btnReRecord;
-        updateStatus('Reviewing...', 'status-review');
+        updateStatus(t.statusReviewing, 'status-review');
     }
 }
 
@@ -458,12 +462,13 @@ function confirmTrainingWrapper() {
 
     brain.normalizeData();
     brain.train({ epochs: 32 }, () => {
-        alert("학습 완료!");
+        const t = translations[currentLang];
+        alert(currentLang === 'KR' ? "학습 완료!" : "Training complete!");
         document.getElementById('data-count').innerText = customTrainingData.length;
         state = 'IDLE'; if(audioTag) audioTag.pause();
         document.getElementById('labeling-zone').style.display = 'none';
         document.getElementById('btn-play').style.display = 'none';
-        updateStatus('Ready', 'status-idle');
+        updateStatus(t.statusIdle, 'status-idle');
     });
 }
 
@@ -545,15 +550,33 @@ const translations = {
         btnPlay: "소리 반복 재생",
         btnPause: "재생 중지",
         title: "IML Research",
-        engineBtn: "오디오 엔진 가동 (Start Engine)",
+        engineBtn: "오디오 엔진 가동",
         statusReady: "엔진 준비됨",
-        statusRecording: "Recording...",
-        statusReviewing: "Reviewing...",
-        statusIdle: "Ready",
+        statusRecording: "녹음 중...",
+        statusReviewing: "검토 중...",
+        statusIdle: "준비 완료",
         dataLabel: "학습 데이터:",
         samplesLabel: "개",
         confirmBtn: "데이터 확정 및 학습",
-        exportBtn: "데이터 추출 (.CSV)"
+        exportBtn: "데이터 추출 (.CSV)",
+        labelLoud: "음량",
+        labelPitch: "음높이",
+        labelBright: "밝기",
+        labelRough: "거칠기",
+        labelingInstruction: "소리에 맞는 시각적 파라미터를 설정하세요",
+        y1Label: "y1: 각짐",
+        y1Left: "둥근",
+        y1Right: "각진",
+        y2Label: "y2: 뾰족함",
+        y2Left: "부드러운",
+        y2Right: "뾰족한",
+        y3Label: "y3: 거칠기",
+        y3Left: "매끈한",
+        y3Right: "거친",
+        y4Label: "y4: 복잡도",
+        y4Left: "단순",
+        y4Right: "복잡",
+        shapeLabel: "기본 형태"
     },
     EN: {
         btnRecord: "Record",
@@ -570,49 +593,128 @@ const translations = {
         dataLabel: "Training Data:",
         samplesLabel: "samples",
         confirmBtn: "Confirm & Train",
-        exportBtn: "Export Data (.CSV)"
+        exportBtn: "Export Data (.CSV)",
+        labelLoud: "Loudness",
+        labelPitch: "Pitch",
+        labelBright: "Brightness",
+        labelRough: "Roughness",
+        labelingInstruction: "Set visual parameters for the sound",
+        y1Label: "y1: Angularity",
+        y1Left: "Round",
+        y1Right: "Angular",
+        y2Label: "y2: Spikiness",
+        y2Left: "Smooth",
+        y2Right: "Spiky",
+        y3Label: "y3: Texture",
+        y3Left: "Sleek",
+        y3Right: "Rough",
+        y4Label: "y4: Density",
+        y4Left: "Simple",
+        y4Right: "Complex",
+        shapeLabel: "Base Shape"
     }
 };
 
 function toggleLanguage() {
     currentLang = currentLang === 'KR' ? 'EN' : 'KR';
+    updateAllUIText();
+}
+
+function updateAllUIText() {
     const t = translations[currentLang];
 
     // Update toggle button
     document.getElementById('lang-toggle').innerText = currentLang === 'KR' ? 'EN' : 'KR';
 
-    // Update all UI texts
+    // Update title
     const titleEl = document.getElementById('title');
     if (titleEl) titleEl.innerText = t.title;
 
+    // Update buttons
     const engineBtn = document.getElementById('btn-engine');
-    if (engineBtn && engineBtn.style.display !== 'none') {
-        engineBtn.innerText = t.engineBtn;
-    }
+    if (engineBtn) engineBtn.innerText = t.engineBtn;
 
     const mainBtn = document.getElementById('btn-main');
-    if (mainBtn && mainBtn.style.display !== 'none') {
+    if (mainBtn) {
         if (state === 'IDLE') mainBtn.innerText = t.btnRecord;
         else if (state === 'RECORDING') mainBtn.innerText = t.btnStop;
         else if (state === 'REVIEWING') mainBtn.innerText = t.btnReRecord;
     }
 
     const playBtn = document.getElementById('btn-play');
-    if (playBtn && playBtn.style.display !== 'none') {
+    if (playBtn) {
         playBtn.innerText = audioTag && !audioTag.paused ? t.btnPause : t.btnPlay;
     }
-
-    const dataLabel = document.getElementById('data-label');
-    if (dataLabel) dataLabel.innerText = t.dataLabel;
-
-    const samplesLabel = document.getElementById('samples-label');
-    if (samplesLabel) samplesLabel.innerText = t.samplesLabel;
 
     const confirmBtn = document.getElementById('btn-confirm');
     if (confirmBtn) confirmBtn.innerText = t.confirmBtn;
 
     const exportBtn = document.getElementById('btn-export');
     if (exportBtn) exportBtn.innerText = t.exportBtn;
+
+    // Update status
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        if (state === 'IDLE') statusEl.innerText = t.statusReady;
+        else if (state === 'RECORDING') statusEl.innerText = t.statusRecording;
+        else if (state === 'REVIEWING') statusEl.innerText = t.statusReviewing;
+    }
+
+    // Update audio feature labels
+    const labelLoud = document.getElementById('label-loud');
+    if (labelLoud) labelLoud.innerText = t.labelLoud;
+
+    const labelPitch = document.getElementById('label-pitch');
+    if (labelPitch) labelPitch.innerText = t.labelPitch;
+
+    const labelBright = document.getElementById('label-bright');
+    if (labelBright) labelBright.innerText = t.labelBright;
+
+    const labelRough = document.getElementById('label-rough');
+    if (labelRough) labelRough.innerText = t.labelRough;
+
+    // Update labeling instruction
+    const labelingInstruction = document.getElementById('labeling-instruction');
+    if (labelingInstruction) labelingInstruction.innerText = t.labelingInstruction;
+
+    // Update slider labels
+    const y1Label = document.getElementById('y1-label');
+    if (y1Label) y1Label.innerText = t.y1Label;
+    const y1Left = document.getElementById('y1-left');
+    if (y1Left) y1Left.innerText = t.y1Left;
+    const y1Right = document.getElementById('y1-right');
+    if (y1Right) y1Right.innerText = t.y1Right;
+
+    const y2Label = document.getElementById('y2-label');
+    if (y2Label) y2Label.innerText = t.y2Label;
+    const y2Left = document.getElementById('y2-left');
+    if (y2Left) y2Left.innerText = t.y2Left;
+    const y2Right = document.getElementById('y2-right');
+    if (y2Right) y2Right.innerText = t.y2Right;
+
+    const y3Label = document.getElementById('y3-label');
+    if (y3Label) y3Label.innerText = t.y3Label;
+    const y3Left = document.getElementById('y3-left');
+    if (y3Left) y3Left.innerText = t.y3Left;
+    const y3Right = document.getElementById('y3-right');
+    if (y3Right) y3Right.innerText = t.y3Right;
+
+    const y4Label = document.getElementById('y4-label');
+    if (y4Label) y4Label.innerText = t.y4Label;
+    const y4Left = document.getElementById('y4-left');
+    if (y4Left) y4Left.innerText = t.y4Left;
+    const y4Right = document.getElementById('y4-right');
+    if (y4Right) y4Right.innerText = t.y4Right;
+
+    const shapeLabel = document.getElementById('shape-label');
+    if (shapeLabel) shapeLabel.innerText = t.shapeLabel;
+
+    // Update data section
+    const dataLabel = document.getElementById('data-label');
+    if (dataLabel) dataLabel.innerText = t.dataLabel;
+
+    const samplesLabel = document.getElementById('samples-label');
+    if (samplesLabel) samplesLabel.innerText = t.samplesLabel;
 }
 
 function updateStatus(msg, cls) {
@@ -633,3 +735,8 @@ function exportCSV() {
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `IML_Research_Data_${Date.now()}.csv`; a.click();
 }
+
+// Initialize UI text on page load
+window.addEventListener('DOMContentLoaded', () => {
+    updateAllUIText();
+});

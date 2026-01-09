@@ -15,52 +15,52 @@
             <button id="lang-toggle" onclick="toggleLanguage()">EN</button>
         </div>
         
-        <button id="btn-engine" onclick="initEngine()">오디오 엔진 가동 (Start Engine)</button>
-        
-        <div id="status" class="status-badge status-idle">엔진 준비됨</div>
+        <button id="btn-engine" onclick="initEngine()"></button>
+
+        <div id="status" class="status-badge status-idle"></div>
 
         <div id="data-display">
-            <p>Loudness: <span id="val-loud">0.00</span></p>
-            <p>Pitch: <span id="val-pitch">0.00</span></p>
-            <p>Brightness: <span id="val-bright">0.00</span></p>
-            <p>Roughness: <span id="val-rough">0.00</span></p>
+            <p><span id="label-loud">Loudness</span>: <span id="val-loud">0.00</span></p>
+            <p><span id="label-pitch">Pitch</span>: <span id="val-pitch">0.00</span></p>
+            <p><span id="label-bright">Brightness</span>: <span id="val-bright">0.00</span></p>
+            <p><span id="label-rough">Roughness</span>: <span id="val-rough">0.00</span></p>
         </div>
 
-        <button id="btn-main" onclick="handleRecord()" style="display:none; margin-top:15px;">녹음 시작</button>
-        <button id="btn-play" onclick="togglePlayback()" style="display:none;">소리 반복 재생</button>
+        <button id="btn-main" onclick="handleRecord()" style="display:none; margin-top:15px;"></button>
+        <button id="btn-play" onclick="togglePlayback()" style="display:none;"></button>
 
         <div id="labeling-zone" style="display:none; margin-top:20px;">
-            <p style="font-size: 0.75rem; color:#00ffcc; text-align:center;">소리에 맞는 시각적 파라미터를 설정하세요</p>
+            <p id="labeling-instruction" style="font-size: 0.75rem; color:#00ffcc; text-align:center;"></p>
             <div class="slider-group">
-                <div class="slider-header"><span class="y1-left">둥근</span><span>y1: 각짐(Angularity)</span><span class="y1-right">각진</span></div>
+                <div class="slider-header"><span id="y1-left"></span><span id="y1-label"></span><span id="y1-right"></span></div>
                 <input type="range" id="y1" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span class="y2-left">부드러운</span><span>y2: 뾰족함(Spikiness)</span><span class="y2-right">뾰족한</span></div>
+                <div class="slider-header"><span id="y2-left"></span><span id="y2-label"></span><span id="y2-right"></span></div>
                 <input type="range" id="y2" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span class="y3-left">매끈한</span><span>y3: 거칠기(Texture)</span><span class="y3-right">거친</span></div>
+                <div class="slider-header"><span id="y3-left"></span><span id="y3-label"></span><span id="y3-right"></span></div>
                 <input type="range" id="y3" min="0" max="1" step="0.01" value="0.5">
             </div>
             <div class="slider-group">
-                <div class="slider-header"><span class="y4-left">단순</span><span>y4: 복잡도(Density)</span><span class="y4-right">복잡</span></div>
+                <div class="slider-header"><span id="y4-left"></span><span id="y4-label"></span><span id="y4-right"></span></div>
                 <input type="range" id="y4" min="0" max="1" step="0.01" value="0.5">
             </div>
-            
+
             <div class="slider-group">
-                <div class="slider-header"><span>기본 형태 (Base Shape)</span><span id="shape-name">Sphere</span></div>
+                <div class="slider-header"><span id="shape-label"></span><span id="shape-name">Sphere</span></div>
                 <input type="range" id="shape-selector" min="0" max="5" step="1" value="0" oninput="changeShape(this.value)">
             </div>
 
-            <button id="btn-confirm" onclick="confirmTrainingWrapper()" style="background:#00ffcc; color:black; margin-top:10px;">데이터 확정 및 학습</button>
+            <button id="btn-confirm" onclick="confirmTrainingWrapper()" style="background:#00ffcc; color:black; margin-top:10px;"></button>
         </div>
         
         <div id="save-load-zone" style="margin-top:auto; padding-top:15px; border-top:1px solid #333; display:none;">
             <p style="text-align:center; font-size:0.85em; color:#888;">
-                <span id="data-label">학습 데이터:</span> <span id="data-count">0</span> <span id="samples-label">개</span>
+                <span id="data-label"></span> <span id="data-count">0</span> <span id="samples-label"></span>
             </p>
-            <button id="btn-export" onclick="exportCSV()" style="background:#222; color:#888; font-size:0.75em;">데이터 추출 (.CSV)</button>
+            <button id="btn-export" onclick="exportCSV()" style="background:#222; color:#888; font-size:0.75em;"></button>
         </div>
     </div>
     <div id="three-container"></div>
