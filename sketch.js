@@ -209,6 +209,7 @@ async function handleRecord() {
         state = 'RECORDING'; audioChunks = [];
         recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
         if(audioTag) audioTag.pause();
+        sourceNode = null; // Reset sourceNode for new recording
 
         try {
             // Request microphone access only when recording starts
@@ -232,13 +233,21 @@ async function handleRecord() {
             state = 'IDLE';
         }
     } else {
-        // Stop recording - turn off microphone
+        // Stop recording - turn off microphone completely
         mediaRecorder.stop();
         state = 'REVIEWING';
 
         // Disconnect microphone from analyser
         if (microphone) {
             microphone.disconnect();
+        }
+
+        // Stop all media stream tracks to actually turn off microphone
+        if (micStream) {
+            micStream.getTracks().forEach(track => track.stop());
+            micStream = null;
+            microphone = null;
+            mediaRecorder = null;
         }
 
         document.getElementById('labeling-zone').style.display = 'block';
@@ -261,9 +270,12 @@ function togglePlayback() {
     const t = translations[currentLang];
 
     if (audioTag.paused) {
-        if (sourceNode) sourceNode.disconnect();
-        sourceNode = audioCtx.createMediaElementSource(audioTag);
-        sourceNode.connect(analyser); analyser.connect(audioCtx.destination);
+        // Only create sourceNode once - reuse it if it exists
+        if (!sourceNode) {
+            sourceNode = audioCtx.createMediaElementSource(audioTag);
+            sourceNode.connect(analyser);
+            analyser.connect(audioCtx.destination);
+        }
         audioTag.play();
         playBtn.classList.add('playing');
         playBtn.innerText = t.btnPause || '재생 중지';
