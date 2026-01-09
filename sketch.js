@@ -303,6 +303,17 @@ function animate() {
         targetY.y3 = parseFloat(document.getElementById('y3').value);
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
+    } else if (state === 'RECORDING') {
+        // During recording, keep sphere shape and use rule-based parameters
+        if(currentY.shape !== 0) {
+            currentY.shape = 0;
+            createShape(0);
+        }
+        const suggestedParams = autoSuggestParameters(currentX);
+        targetY.y1 = suggestedParams.y1;
+        targetY.y2 = suggestedParams.y2;
+        targetY.y3 = suggestedParams.y3;
+        targetY.y4 = suggestedParams.y4;
     } else if (customTrainingData.length >= 3) {
         // AI prediction mode (when training data exists)
         brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
