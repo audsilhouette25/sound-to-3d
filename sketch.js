@@ -235,12 +235,21 @@ function saveRecording() {
 }
 
 function togglePlayback() {
+    const playBtn = document.getElementById('btn-play');
+    const t = translations[currentLang];
+
     if (audioTag.paused) {
         if (sourceNode) sourceNode.disconnect();
         sourceNode = audioCtx.createMediaElementSource(audioTag);
         sourceNode.connect(analyser); analyser.connect(audioCtx.destination);
         audioTag.play();
-    } else { audioTag.pause(); }
+        playBtn.classList.add('playing');
+        playBtn.innerText = t.btnPause || '재생 중지';
+    } else {
+        audioTag.pause();
+        playBtn.classList.remove('playing');
+        playBtn.innerText = t.btnPlay || '소리 반복 재생';
+    }
 }
 
 function animate() {
@@ -465,13 +474,81 @@ function loadTrainingData() {
 }
 
 const translations = {
-    KR: { btnRecord: "녹음 시작", btnStop: "중단", btnReRecord: "다시 녹음" },
-    EN: { btnRecord: "Record", btnStop: "Stop", btnReRecord: "Re-record" }
+    KR: {
+        btnRecord: "녹음 시작",
+        btnStop: "중단",
+        btnReRecord: "다시 녹음",
+        btnPlay: "소리 반복 재생",
+        btnPause: "재생 중지",
+        title: "IML Research",
+        engineBtn: "오디오 엔진 가동 (Start Engine)",
+        statusReady: "엔진 준비됨",
+        statusRecording: "Recording...",
+        statusReviewing: "Reviewing...",
+        statusIdle: "Ready",
+        dataLabel: "학습 데이터:",
+        samplesLabel: "개",
+        confirmBtn: "데이터 확정 및 학습",
+        exportBtn: "데이터 추출 (.CSV)"
+    },
+    EN: {
+        btnRecord: "Record",
+        btnStop: "Stop",
+        btnReRecord: "Re-record",
+        btnPlay: "Play Loop",
+        btnPause: "Stop Playing",
+        title: "IML Research",
+        engineBtn: "Start Audio Engine",
+        statusReady: "Engine Ready",
+        statusRecording: "Recording...",
+        statusReviewing: "Reviewing...",
+        statusIdle: "Ready",
+        dataLabel: "Training Data:",
+        samplesLabel: "samples",
+        confirmBtn: "Confirm & Train",
+        exportBtn: "Export Data (.CSV)"
+    }
 };
 
 function toggleLanguage() {
     currentLang = currentLang === 'KR' ? 'EN' : 'KR';
+    const t = translations[currentLang];
+
+    // Update toggle button
     document.getElementById('lang-toggle').innerText = currentLang === 'KR' ? 'EN' : 'KR';
+
+    // Update all UI texts
+    const titleEl = document.getElementById('title');
+    if (titleEl) titleEl.innerText = t.title;
+
+    const engineBtn = document.getElementById('btn-engine');
+    if (engineBtn && engineBtn.style.display !== 'none') {
+        engineBtn.innerText = t.engineBtn;
+    }
+
+    const mainBtn = document.getElementById('btn-main');
+    if (mainBtn && mainBtn.style.display !== 'none') {
+        if (state === 'IDLE') mainBtn.innerText = t.btnRecord;
+        else if (state === 'RECORDING') mainBtn.innerText = t.btnStop;
+        else if (state === 'REVIEWING') mainBtn.innerText = t.btnReRecord;
+    }
+
+    const playBtn = document.getElementById('btn-play');
+    if (playBtn && playBtn.style.display !== 'none') {
+        playBtn.innerText = audioTag && !audioTag.paused ? t.btnPause : t.btnPlay;
+    }
+
+    const dataLabel = document.getElementById('data-label');
+    if (dataLabel) dataLabel.innerText = t.dataLabel;
+
+    const samplesLabel = document.getElementById('samples-label');
+    if (samplesLabel) samplesLabel.innerText = t.samplesLabel;
+
+    const confirmBtn = document.getElementById('btn-confirm');
+    if (confirmBtn) confirmBtn.innerText = t.confirmBtn;
+
+    const exportBtn = document.getElementById('btn-export');
+    if (exportBtn) exportBtn.innerText = t.exportBtn;
 }
 
 function updateStatus(msg, cls) {
