@@ -185,7 +185,8 @@ async function initEngine() {
     microphone = audioCtx.createMediaStreamSource(stream);
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 512;
-    microphone.connect(analyser);
+    // Don't connect microphone initially - only connect when recording starts
+    // microphone.connect(analyser);
 
     mediaRecorder = new MediaRecorder(stream);
     mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
@@ -210,15 +211,29 @@ async function initEngine() {
 function handleRecord() {
     const t = translations[currentLang];
     if (state === 'IDLE' || state === 'REVIEWING') {
+        // Start recording - turn on microphone
         state = 'RECORDING'; audioChunks = [];
         recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
         if(audioTag) audioTag.pause();
+
+        // Connect microphone to analyser
+        if (microphone && analyser) {
+            microphone.connect(analyser);
+        }
+
         mediaRecorder.start();
         document.getElementById('btn-main').innerText = t.btnStop;
         updateStatus('Recording...', 'status-recording');
     } else {
+        // Stop recording - turn off microphone
         mediaRecorder.stop();
         state = 'REVIEWING';
+
+        // Disconnect microphone from analyser
+        if (microphone) {
+            microphone.disconnect();
+        }
+
         document.getElementById('labeling-zone').style.display = 'block';
         document.getElementById('btn-play').style.display = 'block';
         document.getElementById('btn-main').innerText = t.btnReRecord;
@@ -355,6 +370,21 @@ function updateVisuals() {
 }
 
 function analyzeAudio() {
+    // If in REVIEWING state, use recorded averages instead of live audio
+    if (state === 'REVIEWING') {
+        currentX.loudness = recordedX.loudness;
+        currentX.pitch = recordedX.pitch;
+        currentX.brightness = recordedX.brightness;
+        currentX.roughness = recordedX.roughness;
+
+        document.getElementById('val-loud').innerText = currentX.loudness.toFixed(2);
+        document.getElementById('val-pitch').innerText = currentX.pitch.toFixed(2);
+        document.getElementById('val-bright').innerText = currentX.brightness.toFixed(2);
+        document.getElementById('val-rough').innerText = currentX.roughness.toFixed(2);
+        return;
+    }
+
+    // Only analyze live audio if not in REVIEWING state
     const data = new Uint8Array(analyser.frequencyBinCount);
     const time = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
@@ -362,11 +392,11 @@ function analyzeAudio() {
 
     let sum = 0; for(let v of time) { let n=(v-128)/128; sum+=n*n; }
     currentX.loudness = Math.sqrt(sum/time.length) * 10.0;
-    
+
     let te=0, we=0; for(let i=0; i<data.length; i++) { we+=i*data[i]; te+=data[i]; }
     currentX.pitch = te>0 ? (we/te)/50.0 : 0;
     currentX.brightness = currentX.pitch * 1.2;
-    
+
     let zcr=0; for(let i=1; i<time.length; i++) if(time[i]>128 && time[i-1]<=128) zcr++;
     currentX.roughness = zcr/40.0;
 
