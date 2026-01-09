@@ -13,10 +13,10 @@ let currentLang = 'KR';
 
 // CPU-based rendering variables
 let originalVertices = [];
-let originalParticlePositions = []; // Store original particle positions
 let tempVec = new THREE.Vector3();
 let animTime = 0;
-let cubeParticles = null; // Particle system for cube visual effects
+let cubeOverlay = null; // High subdivision cube overlay for dynamic graphics
+let cubeOverlayOriginalVertices = [];
 
 // Noise functions (CPU version of GPU shader noise)
 function hash(n) {
@@ -65,12 +65,13 @@ function createShape(type) {
         currentMesh.geometry.dispose();
     }
 
-    // Remove existing particles if any
-    if (cubeParticles) {
-        scene.remove(cubeParticles);
-        cubeParticles.geometry.dispose();
-        cubeParticles.material.dispose();
-        cubeParticles = null;
+    // Remove existing cube overlay if any
+    if (cubeOverlay) {
+        scene.remove(cubeOverlay);
+        cubeOverlay.geometry.dispose();
+        cubeOverlay.material.dispose();
+        cubeOverlay = null;
+        cubeOverlayOriginalVertices = [];
     }
 
     let geo;
@@ -78,53 +79,31 @@ function createShape(type) {
     else if (type == 1) {
         geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 1, 1, 1); // Simple cube - scale only
 
-        // Create particle system for cube
-        const particleCount = 2000;
-        const particleGeo = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        const colors = new Float32Array(particleCount * 3);
-
-        for (let i = 0; i < particleCount; i++) {
-            // Random position around cube surface
-            const face = Math.floor(Math.random() * 6);
-            const u = (Math.random() - 0.5) * 1.4;
-            const v = (Math.random() - 0.5) * 1.4;
-
-            if (face === 0) { positions[i*3] = 0.7; positions[i*3+1] = u; positions[i*3+2] = v; }
-            else if (face === 1) { positions[i*3] = -0.7; positions[i*3+1] = u; positions[i*3+2] = v; }
-            else if (face === 2) { positions[i*3] = u; positions[i*3+1] = 0.7; positions[i*3+2] = v; }
-            else if (face === 3) { positions[i*3] = u; positions[i*3+1] = -0.7; positions[i*3+2] = v; }
-            else if (face === 4) { positions[i*3] = u; positions[i*3+1] = v; positions[i*3+2] = 0.7; }
-            else { positions[i*3] = u; positions[i*3+1] = v; positions[i*3+2] = -0.7; }
-
-            colors[i*3] = 0.0;
-            colors[i*3+1] = 1.0;
-            colors[i*3+2] = 0.7;
-        }
-
-        particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        particleGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-        const particleMat = new THREE.PointsMaterial({
-            size: 0.02,
+        // Create high subdivision overlay cube for dynamic graphics
+        const overlayGeo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
+        const overlayMat = new THREE.MeshBasicMaterial({
             vertexColors: true,
+            wireframe: true,
             transparent: true,
-            opacity: 0.8,
-            blending: THREE.AdditiveBlending
+            opacity: 0.9
         });
 
-        cubeParticles = new THREE.Points(particleGeo, particleMat);
-        scene.add(cubeParticles);
+        cubeOverlay = new THREE.Mesh(overlayGeo, overlayMat);
+        scene.add(cubeOverlay);
 
-        // Store original particle positions
-        originalParticlePositions = [];
-        for (let i = 0; i < particleCount; i++) {
-            originalParticlePositions.push({
-                x: positions[i*3],
-                y: positions[i*3+1],
-                z: positions[i*3+2]
+        // Store original vertices for overlay
+        const overlayPos = cubeOverlay.geometry.attributes.position;
+        const overlayNorm = cubeOverlay.geometry.attributes.normal;
+        for (let i = 0; i < overlayPos.count; i++) {
+            cubeOverlayOriginalVertices.push({
+                pos: new THREE.Vector3(overlayPos.getX(i), overlayPos.getY(i), overlayPos.getZ(i)),
+                normal: new THREE.Vector3(overlayNorm.getX(i), overlayNorm.getY(i), overlayNorm.getZ(i))
             });
         }
+
+        // Add color attribute to overlay
+        const overlayColors = new Float32Array(overlayPos.count * 3);
+        cubeOverlay.geometry.setAttribute('color', new THREE.BufferAttribute(overlayColors, 3));
     }
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 24, 48);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 24, 24);
@@ -132,11 +111,12 @@ function createShape(type) {
     else geo = new THREE.OctahedronGeometry(1.2, 2);
 
     // CPU-based material with vertex colors for dynamic coloring
+    // For cube, make base cube invisible (overlay will be visible)
     const mat = new THREE.MeshBasicMaterial({
         vertexColors: true,
         wireframe: true,
         transparent: true,
-        opacity: 0.9
+        opacity: type === 1 ? 0.0 : 0.9
     });
 
     currentMesh = new THREE.Mesh(geo, mat);
@@ -262,42 +242,28 @@ function updateVisuals() {
     const pos = currentMesh.geometry.attributes.position;
     const colors = currentMesh.geometry.attributes.color;
 
-    // For cube (type 1), only apply scale transformation
+    // For cube (type 1), base cube only scales, overlay has dynamic displacement
     if (currentY.shape === 1) {
         // Calculate scale based on audio and parameters
         const noiseVal = noise3D(animTime * 0.4, animTime * 0.4, animTime * 0.4);
         const scaleAmount = 1.0 + (noiseVal * currentY.y3 * 0.3) + (currentX.loudness * 0.15);
         currentMesh.scale.set(scaleAmount, scaleAmount, scaleAmount);
 
-        // Color vertices based on scale
-        const colorA = { r: 0.0, g: 1.0, b: 0.7 }; // Cyan
-        const colorB = { r: 0.1, g: 0.05, b: 0.4 }; // Dark Blue
-        const t = Math.max(0, Math.min(1, (scaleAmount - 1.0) * 2));
+        // Update overlay with dynamic vertex displacement
+        if (cubeOverlay && cubeOverlayOriginalVertices.length > 0) {
+            const overlayPos = cubeOverlay.geometry.attributes.position;
+            const overlayColors = cubeOverlay.geometry.attributes.color;
 
-        for (let i = 0; i < originalVertices.length; i++) {
-            colors.setXYZ(i,
-                colorB.r + (colorA.r - colorB.r) * t,
-                colorB.g + (colorA.g - colorB.g) * t,
-                colorB.b + (colorA.b - colorB.b) * t
-            );
-        }
+            for (let i = 0; i < cubeOverlayOriginalVertices.length; i++) {
+                const orig = cubeOverlayOriginalVertices[i];
+                const p = orig.pos;
+                const n = orig.normal;
 
-        // Update particles with dynamic noise-based displacement
-        if (cubeParticles && originalParticlePositions.length > 0) {
-            const particlePos = cubeParticles.geometry.attributes.position;
-            const particleColors = cubeParticles.geometry.attributes.color;
-
-            for (let i = 0; i < particlePos.count; i++) {
-                const orig = originalParticlePositions[i];
-                const x = orig.x;
-                const y = orig.y;
-                const z = orig.z;
-
-                // Apply noise-based displacement
+                // Replicate GPU shader noise calculation
                 const noiseScale = 2.0 + currentY.y4 * 8.0;
-                const noiseVal = noise3D(x * noiseScale + animTime * 0.4,
-                                         y * noiseScale + animTime * 0.4,
-                                         z * noiseScale + animTime * 0.4);
+                const noiseVal = noise3D(p.x * noiseScale + animTime * 0.4,
+                                         p.y * noiseScale + animTime * 0.4,
+                                         p.z * noiseScale + animTime * 0.4);
 
                 // Angular quantization effect
                 const steps = 1.0 + (1.0 - currentY.y1) * 12.0;
@@ -305,36 +271,33 @@ function updateVisuals() {
                 const finalNoise = noiseVal * (1 - currentY.y1) + angular * currentY.y1;
 
                 // Wave effect
-                const wave = Math.sin(x * 12.0 + animTime) * currentY.y2 * 0.45;
+                const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
 
                 // Total displacement
-                const displacement = (finalNoise * currentY.y3 * 0.5) + (currentX.loudness * 0.4) + wave;
+                const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
 
-                // Determine normal based on which face the particle is on
-                let nx = 0, ny = 0, nz = 0;
-                if (Math.abs(x) > Math.abs(y) && Math.abs(x) > Math.abs(z)) nx = Math.sign(x);
-                else if (Math.abs(y) > Math.abs(z)) ny = Math.sign(y);
-                else nz = Math.sign(z);
-
-                // Apply displacement along normal from original position
-                particlePos.setXYZ(i,
-                    x + nx * displacement,
-                    y + ny * displacement,
-                    z + nz * displacement
+                // Apply displacement along normal
+                overlayPos.setXYZ(i,
+                    p.x + n.x * displacement,
+                    p.y + n.y * displacement,
+                    p.z + n.z * displacement
                 );
 
                 // Color based on displacement
-                const colorT = Math.max(0, Math.min(1, displacement + 0.25));
-                particleColors.setXYZ(i,
-                    colorB.r + (colorA.r - colorB.r) * colorT,
-                    colorB.g + (colorA.g - colorB.g) * colorT,
-                    colorB.b + (colorA.b - colorB.b) * colorT
+                const colorA = { r: 0.0, g: 1.0, b: 0.7 }; // Cyan
+                const colorB = { r: 0.1, g: 0.05, b: 0.4 }; // Dark Blue
+                const t = Math.max(0, Math.min(1, displacement + 0.25));
+
+                overlayColors.setXYZ(i,
+                    colorB.r + (colorA.r - colorB.r) * t,
+                    colorB.g + (colorA.g - colorB.g) * t,
+                    colorB.b + (colorA.b - colorB.b) * t
                 );
             }
 
-            particlePos.needsUpdate = true;
-            particleColors.needsUpdate = true;
-            cubeParticles.rotation.y = currentMesh.rotation.y;
+            overlayPos.needsUpdate = true;
+            overlayColors.needsUpdate = true;
+            cubeOverlay.rotation.y = currentMesh.rotation.y;
         }
     } else {
         // For other shapes, apply vertex displacement as before
