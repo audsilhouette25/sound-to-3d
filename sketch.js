@@ -36,8 +36,8 @@ const vertexShader = `
         float finalNoise = mix(noiseVal, angular, uY1);
         float wave = sin(pos.x * 12.0 + uTime) * uY2 * 0.45;
 
-        // 변형 강도를 줄여서 형상이 터지지 않게 함
-        float displacement = (finalNoise * uY3 * 0.35) + (uLoudness * 0.3) + (wave * 0.5);
+        // 원래 강도로 복구
+        float displacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
         vDisplacement = displacement;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
@@ -78,7 +78,7 @@ function createShape(type) {
     let geo;
     const res = 128; // 고해상도 (GPU 덕분에 가능)
     if (type == 0) geo = new THREE.SphereGeometry(1, res, res);
-    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 16, 16, 16); // 낮은 해상도로 터짐 방지
+    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 64, 64, 64); // 원래 해상도로 복구
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
