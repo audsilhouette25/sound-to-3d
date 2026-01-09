@@ -147,7 +147,12 @@ function createShape(type) {
 
     let geo;
     if (type == 0) geo = new THREE.SphereGeometry(1, 128, 128); // High resolution like 0108수정(지원)
-    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 64, 64, 64); // Same as 0108수정(지원)
+    else if (type == 1) {
+        geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 64, 64, 64); // Same as 0108수정(지원)
+        // Merge vertices for cube to prevent face tearing
+        geo = THREE.BufferGeometryUtils.mergeVertices(geo);
+        geo.computeVertexNormals(); // Recompute normals after merging
+    }
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
@@ -361,10 +366,6 @@ function updateVisuals() {
     // Reset scale for all shapes
     currentMesh.scale.set(1, 1, 1);
 
-    // Cube-specific displacement reduction to prevent tearing
-    const isCube = currentY.shape === 1;
-    const displacementMultiplier = isCube ? 0.15 : 1.0;
-
     // Apply vertex displacement to all shapes uniformly
     for (let i = 0; i < originalVertices.length; i++) {
         const orig = originalVertices[i];
@@ -385,8 +386,8 @@ function updateVisuals() {
         // Wave effect
         const wave = Math.sin(p.x * 12.0 + animTime) * currentY.y2 * 0.45;
 
-        // Total displacement (reduced for cube to prevent tearing)
-        const displacement = ((finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave) * displacementMultiplier;
+        // Total displacement
+        const displacement = (finalNoise * currentY.y3 * 0.7) + (currentX.loudness * 0.6) + wave;
 
         // Apply displacement along normal
         pos.setXYZ(i,
