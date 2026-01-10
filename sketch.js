@@ -11,7 +11,7 @@ let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let customTrainingData = [];
 let currentLang = 'KR';
-let micStream = null; // Store microphone stream
+let micStream = null;
 
 // --- GPU Shader Code ---
 const vertexShader = `
@@ -27,7 +27,7 @@ const vertexShader = `
         f = f*f*(3.0-2.0*f);
         float n = p.x + p.y*57.0 + 113.0*p.z;
         return mix(mix(mix(hash(n+0.0), hash(n+1.0),f.x), mix(hash(n+57.0), hash(n+58.0),f.x),f.y),
-                   mix(mix(hash(n+113.0),hash(n+114.0),f.x), mix(hash(n+170.0),hash(n+171.0),f.x),f.y),f.z);
+                   mix(mix(mix(hash(n+113.0),hash(n+114.0),f.x), mix(hash(n+170.0),hash(n+171.0),f.x),f.y),f.z);
     }
 
     void main() {
@@ -47,8 +47,8 @@ const vertexShader = `
 const fragmentShader = `
     varying float vDisplacement;
     void main() {
-        vec3 colorA = vec3(0.0, 1.0, 0.7); // Cyan
-        vec3 colorB = vec3(0.1, 0.05, 0.4); // Dark Blue
+        vec3 colorA = vec3(0.0, 1.0, 0.7);
+        vec3 colorB = vec3(0.1, 0.05, 0.4);
         vec3 finalColor = mix(colorB, colorA, vDisplacement + 0.25);
         gl_FragColor = vec4(finalColor, 0.9);
     }
@@ -65,27 +65,12 @@ const PITCH_NORMALIZER = 1000.0;
 const BRIGHTNESS_NORMALIZER = 10000.0;
 const ROUGHNESS_NORMALIZER = 1.0;
 
-// Rule-based auto-classification
 function autoClassifyShape(audioFeatures) {
-    const loud = Math.min(audioFeatures.loudness / LOUDNESS_NORMALIZER, 1.0);
-    const pitch = Math.min(audioFeatures.pitch / PITCH_NORMALIZER, 1.0);
-    const bright = Math.min(audioFeatures.brightness / BRIGHTNESS_NORMALIZER, 1.0);
-    const rough = Math.min(audioFeatures.roughness / ROUGHNESS_NORMALIZER, 1.0);
-
     const scores = { sphere: 0, cube: 0, torus: 0, cone: 0, cylinder: 0, octahedron: 0 };
-    scores.sphere = (1 - rough) * 0.4 + (1 - Math.abs(loud - 0.5)) * 0.3 + (1 - Math.abs(pitch - 0.5)) * 0.3;
-    scores.cube = loud * 0.4 + (1 - pitch) * 0.3 + rough * 0.3;
-    scores.torus = bright * 0.4 + (1 - Math.abs(rough - 0.5)) * 0.3 + (1 - Math.abs(loud - 0.6)) * 0.3;
-    scores.cone = pitch * 0.4 + bright * 0.3 + (1 - loud) * 0.3;
-    scores.cylinder = (1 - rough) * 0.4 + (1 - Math.abs(loud - 0.7)) * 0.4 + (1 - Math.abs(pitch - 0.3)) * 0.2;
-    scores.octahedron = rough * 0.4 + bright * 0.3 + loud * 0.3;
-
     let bestShape = 0;
-    let bestScore = scores.sphere;
+    let bestScore = -1;
     const shapeNames = ['sphere', 'cube', 'torus', 'cone', 'cylinder', 'octahedron'];
-    shapeNames.forEach((name, idx) => {
-        if (scores[name] > bestScore) { bestScore = scores[name]; bestShape = idx; }
-    });
+    shapeNames.forEach((name, idx) => { if (scores[name] > bestScore) { bestScore = scores[name]; bestShape = idx; } });
     return bestShape;
 }
 
@@ -94,12 +79,7 @@ function autoSuggestParameters(audioFeatures) {
     const pitch = Math.min(audioFeatures.pitch / PITCH_NORMALIZER, 1.0);
     const bright = Math.min(audioFeatures.brightness / BRIGHTNESS_NORMALIZER, 1.0);
     const rough = Math.min(audioFeatures.roughness / ROUGHNESS_NORMALIZER, 1.0);
-
-    const y1 = pitch * 0.6 + bright * 0.4;
-    const y2 = bright * 0.5 + rough * 0.5;
-    const y3 = rough * 0.7 + (1 - loud) * 0.3;
-    const y4 = bright * 0.5 + loud * 0.5;
-    return { y1, y2, y3, y4 };
+    return { y1: pitch * 0.6 + bright * 0.4, y2: bright * 0.5 + rough * 0.5, y3: rough * 0.7 + (1 - loud) * 0.3, y4: bright * 0.5 + loud * 0.5 };
 }
 
 // --- Initialization ---
@@ -109,62 +89,15 @@ function initThree() {
     const rightPanelWidth = window.innerWidth - 320;
     camera = new THREE.PerspectiveCamera(75, rightPanelWidth / window.innerHeight, 0.1, 1000);
     camera.position.z = 3.5;
-
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(rightPanelWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
-
     createShape(0);
     animate();
 }
 
 function createConnectedCube(size, subdivisions) {
-    const geo = new THREE.BufferGeometry();
-    const half = size / 2;
-    const vertices = [];
-    const indices = [];
-    const seg = subdivisions;
-    const vertexMap = new Map();
-
-    function getVertexIndex(x, y, z) {
-        const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
-        if (vertexMap.has(key)) return vertexMap.get(key);
-        const index = vertices.length / 3;
-        vertices.push(x, y, z);
-        vertexMap.set(key, index);
-        return index;
-    }
-
-    // Generate faces
-    for (let i = 0; i <= seg; i++) {
-        for (let j = 0; j <= seg; j++) {
-            const a = -half + (i / seg) * size;
-            const b = -half + (j / seg) * size;
-            getVertexIndex(a, b, half); getVertexIndex(a, b, -half);
-            getVertexIndex(a, half, b); getVertexIndex(a, -half, b);
-            getVertexIndex(half, a, b); getVertexIndex(-half, a, b);
-        }
-    }
-
-    function addFaceIndices(getIndex) {
-        for (let i = 0; i < seg; i++) {
-            for (let j = 0; j < seg; j++) {
-                const a = getIndex(i, j), b = getIndex(i + 1, j), c = getIndex(i + 1, j + 1), d = getIndex(i, j + 1);
-                indices.push(a, b, c); indices.push(a, c, d);
-            }
-        }
-    }
-
-    addFaceIndices((i, j) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${half.toFixed(6)}`));
-    addFaceIndices((i, j) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${(-half).toFixed(6)}`));
-    addFaceIndices((i, k) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${half.toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`));
-    addFaceIndices((i, k) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${(-half).toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`));
-    addFaceIndices((j, k) => vertexMap.get(`${half.toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`));
-    addFaceIndices((j, k) => vertexMap.get(`${(-half).toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`));
-
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geo.setIndex(indices);
-    geo.computeVertexNormals();
+    const geo = new THREE.BoxGeometry(size, size, size, subdivisions, subdivisions, subdivisions);
     return geo;
 }
 
@@ -172,7 +105,7 @@ function createShape(type) {
     if (currentMesh) { scene.remove(currentMesh); currentMesh.geometry.dispose(); }
     let geo;
     if (type == 0) geo = new THREE.SphereGeometry(1, 128, 128);
-    else if (type == 1) geo = createConnectedCube(1.4, 32);
+    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
     else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
     else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
     else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
@@ -187,21 +120,17 @@ async function initEngine() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.8;
-
     brain = ml5.neuralNetwork({
         inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
         outputs: ['y1', 'y2', 'y3', 'y4', 'shape'],
         task: 'regression', debug: false
     });
-
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
-
     updateAllUIText();
     initThree();
-    loadTrainingData(); // 엔진 가동 시 데이터 로드 및 학습
+    loadTrainingData();
 }
 
 // --- Workflow ---
@@ -212,8 +141,6 @@ async function handleRecord() {
         recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
         if(audioTag) audioTag.pause();
         isPlaying = false;
-        sourceNode = null;
-
         try {
             if (!micStream) {
                 micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -226,18 +153,11 @@ async function handleRecord() {
             mediaRecorder.start();
             document.getElementById('btn-main').innerText = t.btnStop;
             updateStatus(t.statusRecording, 'status-recording');
-        } catch (err) {
-            alert('마이크 접근 권한이 필요합니다.');
-            state = 'IDLE';
-        }
+        } catch (err) { alert('마이크 접근 권한이 필요합니다.'); state = 'IDLE'; }
     } else {
         mediaRecorder.stop();
         state = 'REVIEWING';
         if (microphone) microphone.disconnect();
-        if (micStream) {
-            micStream.getTracks().forEach(track => track.stop());
-            micStream = null; microphone = null; mediaRecorder = null;
-        }
         document.getElementById('labeling-zone').style.display = 'block';
         document.getElementById('btn-play').style.display = 'block';
         document.getElementById('btn-main').innerText = t.btnReRecord;
@@ -247,8 +167,6 @@ async function handleRecord() {
 
 function saveRecording() {
     const blob = new Blob(audioChunks, { type: 'audio/wav' });
-    if (audioTag) audioTag.pause();
-    if (sourceNode) sourceNode.disconnect();
     audioTag = new Audio(URL.createObjectURL(blob));
     audioTag.loop = true;
     recordedX.loudness /= recordedX.count; recordedX.pitch /= recordedX.count;
@@ -264,12 +182,11 @@ function togglePlayback() {
             sourceNode = audioCtx.createMediaElementSource(audioTag);
             sourceNode.connect(analyser); analyser.connect(audioCtx.destination);
         }
-        if (audioCtx.state === 'suspended') audioCtx.resume();
         audioTag.play(); isPlaying = true;
-        playBtn.classList.add('playing'); playBtn.innerText = t.btnPause;
+        playBtn.innerText = t.btnPause;
     } else {
         audioTag.pause(); isPlaying = false;
-        playBtn.classList.remove('playing'); playBtn.innerText = t.btnPlay;
+        playBtn.innerText = t.btnPlay;
     }
 }
 
@@ -286,11 +203,7 @@ function animate() {
         targetY.y3 = parseFloat(document.getElementById('y3').value);
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
-    } else if (state === 'RECORDING') {
-        if(currentY.shape !== 0) { currentY.shape = 0; createShape(0); }
-        const sp = autoSuggestParameters(currentX);
-        targetY.y1 = sp.y1; targetY.y2 = sp.y2; targetY.y3 = sp.y3; targetY.y4 = sp.y4;
-    } else if (customTrainingData.length >= 3) {
+    } else if (state === 'IDLE' && customTrainingData.length >= 3) {
         brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
             if(!err) {
                 targetY.y1 = res[0].value; targetY.y2 = res[1].value;
@@ -299,19 +212,14 @@ function animate() {
                 if(predShape !== currentY.shape) { currentY.shape = predShape; createShape(predShape); }
             }
         });
-    } else {
-        const suggestedShape = autoClassifyShape(currentX);
-        if(suggestedShape !== currentY.shape) { currentY.shape = suggestedShape; createShape(suggestedShape); }
-        const sp = autoSuggestParameters(currentX);
-        targetY.y1 = sp.y1; targetY.y2 = sp.y2; targetY.y3 = sp.y3; targetY.y4 = sp.y4;
     }
 
     for(let k of ['y1', 'y2', 'y3', 'y4']) {
         currentY[k] += (targetY[k] - currentY[k]) * 0.1;
         shaderUniforms[`u${k.toUpperCase()}`].value = currentY[k];
     }
-    currentMesh.rotation.y += 0.005;
-    renderer.render(scene, camera);
+    if (currentMesh) currentMesh.rotation.y += 0.005;
+    if (renderer) renderer.render(scene, camera);
 }
 
 function analyzeAudio() {
@@ -349,18 +257,15 @@ function confirmTrainingWrapper() {
     brain.train({ epochs: 32 }, () => {
         alert(currentLang === 'KR' ? "학습 완료!" : "Training complete!");
         document.getElementById('data-count').innerText = customTrainingData.length;
-        state = 'IDLE'; if(audioTag) audioTag.pause();
+        state = 'IDLE'; 
         document.getElementById('labeling-zone').style.display = 'none';
         document.getElementById('btn-play').style.display = 'none';
-        updateStatus(translations[currentLang].statusIdle, 'status-idle');
+        updateStatus(translations[currentLang].statusReady, 'status-idle');
     });
 }
 
 function saveTrainingData() {
-    try {
-        const saveObj = { version: 1, count: customTrainingData.length, data: customTrainingData, timestamp: Date.now() };
-        localStorage.setItem('soundTo3D_trainingData', JSON.stringify(saveObj));
-    } catch (e) { console.error('Save failed:', e); }
+    localStorage.setItem('soundTo3D_trainingData', JSON.stringify({ data: customTrainingData }));
 }
 
 function loadTrainingData() {
@@ -368,39 +273,43 @@ function loadTrainingData() {
     if (!saved) return;
     try {
         const saveObj = JSON.parse(saved);
-        if (!saveObj || !Array.isArray(saveObj.data)) return;
-        customTrainingData = saveObj.data;
+        customTrainingData = saveObj.data || [];
         document.getElementById('data-count').innerText = customTrainingData.length;
-        if (brain) {
+        if (brain && customTrainingData.length > 0) {
             customTrainingData.forEach(item => brain.addData([item.x.loudness, item.x.pitch, item.x.brightness, item.x.roughness], item.y));
             if (customTrainingData.length >= 3) {
                 brain.normalizeData();
-                brain.train({ epochs: 32 }, () => console.log('Auto-retrained'));
+                brain.train({ epochs: 10 }, () => console.log('Loaded & Trained'));
             }
         }
-    } catch (e) { console.error('Load failed:', e); }
+    } catch (e) { console.error(e); }
 }
 
+// --- UI & Translation ---
 const translations = {
     KR: {
-        btnRecord: "녹음 시작", btnStop: "중단", btnReRecord: "다시 녹음", btnPlay: "소리 반복 재생", btnPause: "재생 중지",
-        title: "IML Research", engineBtn: "오디오 엔진 가동", statusReady: "엔진 준비됨", statusRecording: "녹음 중...",
-        statusReviewing: "검토 중...", statusIdle: "준비 완료", dataLabel: "학습 데이터:", samplesLabel: "개",
-        confirmBtn: "데이터 확정 및 학습", exportBtn: "데이터 추출 (.CSV)", labelLoud: "음량", labelPitch: "음높이",
-        labelBright: "밝기", labelRough: "거칠기", labelingInstruction: "소리에 맞는 시각적 파라미터를 설정하세요",
-        y1Label: "y1: 각짐", y1Left: "둥근", y1Right: "각진", y2Label: "y2: 뾰족함", y2Left: "부드러운", y2Right: "뾰족한",
-        y3Label: "y3: 거칠기", y3Left: "매끈한", y3Right: "거친", y4Label: "y4: 복잡도", y4Left: "단순", y4Right: "복잡",
-        shapeLabel: "기본 형태", shapeNames: ['구', '정육면체', '토러스', '원뿔', '원기둥', '팔면체']
+        title: "IML Research", btnEngine: "오디오 엔진 가동", btnRecord: "녹음 시작", btnStop: "중단", btnReRecord: "다시 녹음",
+        btnPlay: "소리 재생", btnPause: "재생 중지", btnConfirm: "데이터 확정 및 학습", btnExport: "CSV 추출",
+        statusReady: "준비 완료", statusRecording: "녹음 중...", statusReviewing: "검토 중...",
+        labelLoud: "음량", labelPitch: "음높이", labelBright: "밝기", labelRough: "거칠기",
+        y1Label: "y1: 각짐", y1Left: "둥근", y1Right: "각진",
+        y2Label: "y2: 뾰족함", y2Left: "부드러운", y2Right: "뾰족한",
+        y3Label: "y3: 거칠기", y3Left: "매끈한", y3Right: "거친",
+        y4Label: "y4: 복잡도", y4Left: "단순", y4Right: "복잡",
+        shapeLabel: "기본 형태", dataLabel: "학습 데이터:", samplesLabel: "개", labelingInstruction: "소리에 어울리는 형태를 조절하세요",
+        shapeNames: ['구', '정육면체', '토러스', '원뿔', '원기둥', '팔면체']
     },
     EN: {
-        btnRecord: "Record", btnStop: "Stop", btnReRecord: "Re-record", btnPlay: "Play Loop", btnPause: "Stop Playing",
-        title: "IML Research", engineBtn: "Start Audio Engine", statusReady: "Engine Ready", statusRecording: "Recording...",
-        statusReviewing: "Reviewing...", statusIdle: "Ready", dataLabel: "Training Data:", samplesLabel: "samples",
-        confirmBtn: "Confirm & Train", exportBtn: "Export Data (.CSV)", labelLoud: "Loudness", labelPitch: "Pitch",
-        labelBright: "Brightness", labelRough: "Roughness", labelingInstruction: "Set visual parameters for the sound",
-        y1Label: "y1: Angularity", y1Left: "Round", y1Right: "Angular", y2Label: "y2: Spikiness", y2Left: "Smooth", y2Right: "Spiky",
-        y3Label: "y3: Texture", y3Left: "Sleek", y3Right: "Rough", y4Label: "y4: Density", y4Left: "Simple", y4Right: "Complex",
-        shapeLabel: "Base Shape", shapeNames: ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron']
+        title: "IML Research", btnEngine: "Start Engine", btnRecord: "Record", btnStop: "Stop", btnReRecord: "Re-record",
+        btnPlay: "Play", btnPause: "Pause", btnConfirm: "Confirm & Train", btnExport: "Export CSV",
+        statusReady: "Ready", statusRecording: "Recording...", statusReviewing: "Reviewing...",
+        labelLoud: "Loudness", labelPitch: "Pitch", labelBright: "Brightness", labelRough: "Roughness",
+        y1Label: "y1: Angularity", y1Left: "Round", y1Right: "Angular",
+        y2Label: "y2: Spikiness", y2Left: "Smooth", y2Right: "Spiky",
+        y3Label: "y3: Texture", y3Left: "Sleek", y3Right: "Rough",
+        y4Label: "y4: Density", y4Left: "Simple", y4Right: "Complex",
+        shapeLabel: "Base Shape", dataLabel: "Data:", samplesLabel: "samples", labelingInstruction: "Adjust visual to match sound",
+        shapeNames: ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron']
     }
 };
 
@@ -409,16 +318,21 @@ function toggleLanguage() { currentLang = currentLang === 'KR' ? 'EN' : 'KR'; up
 function updateAllUIText() {
     const t = translations[currentLang];
     document.getElementById('lang-toggle').innerText = currentLang === 'KR' ? 'EN' : 'KR';
+
+    // ID mapping logic: label-loud -> labelLoud
     const ids = ['title', 'btn-engine', 'btn-confirm', 'btn-export', 'label-loud', 'label-pitch', 'label-bright', 'label-rough', 
-                 'labeling-instruction', 'y1-label', 'y1-left', 'y1-right', 'y2-label', 'y2-left', 'y2-right', 
-                 'y3-label', 'y3-left', 'y3-right', 'y4-label', 'y4-left', 'y4-right', 'shape-label', 'data-label', 'samples-label'];
-    ids.forEach(id => { const el = document.getElementById(id); if(el) el.innerText = t[id.replace('-','').replace('label','Label').replace('btn','Btn').replace('instruction','Instruction') || id]; });
-    
-    // Manual overrides for complex keys
-    if(document.getElementById('title')) document.getElementById('title').innerText = t.title;
-    if(document.getElementById('btn-engine')) document.getElementById('btn-engine').innerText = t.engineBtn;
-    if(document.getElementById('btn-confirm')) document.getElementById('btn-confirm').innerText = t.confirmBtn;
-    if(document.getElementById('btn-export')) document.getElementById('btn-export').innerText = t.exportBtn;
+                 'y1-label', 'y1-left', 'y1-right', 'y2-label', 'y2-left', 'y2-right', 
+                 'y3-label', 'y3-left', 'y3-right', 'y4-label', 'y4-left', 'y4-right', 
+                 'shape-label', 'data-label', 'samples-label', 'labeling-instruction'];
+
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            // Convert 'label-loud' to 'labelLoud'
+            const key = id.split('-').map((word, i) => i === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)).join('');
+            if (t[key]) el.innerText = t[key];
+        }
+    });
 
     const mainBtn = document.getElementById('btn-main');
     if (mainBtn) {
@@ -426,33 +340,33 @@ function updateAllUIText() {
         else if (state === 'RECORDING') mainBtn.innerText = t.btnStop;
         else if (state === 'REVIEWING') mainBtn.innerText = t.btnReRecord;
     }
-    const playBtn = document.getElementById('btn-play');
-    if (playBtn) playBtn.innerText = audioTag && !audioTag.paused ? t.btnPause : t.btnPlay;
-    const statusEl = document.getElementById('status');
-    if (statusEl) {
-        if (state === 'IDLE') statusEl.innerText = t.statusReady;
-        else if (state === 'RECORDING') statusEl.innerText = t.statusRecording;
-        else if (state === 'REVIEWING') statusEl.innerText = t.statusReviewing;
-    }
+    
     const shapeSelector = document.getElementById('shape-selector');
     if (shapeSelector) document.getElementById('shape-name').innerText = t.shapeNames[parseInt(shapeSelector.value)];
 }
 
-function updateStatus(msg, cls) { const el = document.getElementById('status'); el.innerText = msg; el.className = 'status-badge ' + cls; }
+function updateStatus(msg, cls) { 
+    const el = document.getElementById('status'); 
+    if(el) { el.innerText = msg; el.className = 'status-badge ' + cls; }
+}
 
-function changeShape(val) { document.getElementById('shape-name').innerText = translations[currentLang].shapeNames[val]; createShape(val); }
+function changeShape(val) { 
+    if(translations[currentLang]) {
+        document.getElementById('shape-name').innerText = translations[currentLang].shapeNames[val]; 
+        createShape(val); 
+    }
+}
 
 function exportCSV() {
     let csv = "loudness,pitch,brightness,roughness,y1,y2,y3,y4,shape\n";
     customTrainingData.forEach(d => { csv += `${d.x.loudness},${d.x.pitch},${d.x.brightness},${d.x.roughness},${d.y.join(',')}\n`; });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `IML_Data_${Date.now()}.csv`; a.click();
+    a.download = `IML_Data.csv`; a.click();
 }
 
 window.addEventListener('DOMContentLoaded', () => {
     updateAllUIText();
-    // 엔진 가동 전이라도 저장된 데이터가 있다면 개수 미리 표시
     const saved = localStorage.getItem('soundTo3D_trainingData');
     if (saved) {
         try {
