@@ -213,7 +213,7 @@ const fragmentShader = `
     }
 `;
 
-// Cube-specific vertex shader with mirror effect (enhanced y-axis movement)
+// Cube-specific vertex shader with mirror effect
 const cubeVertexShader = `
     varying float vDisplacement;
     varying vec3 vNormal;
@@ -248,26 +248,14 @@ const cubeVertexShader = `
 
         // Determine which axis based on normal direction
         float mirror = 1.0;
-        float yBoost = 1.0;  // Extra boost for y-axis
-        float xzScale = 0.5; // Reduce x/z axis movement
-
-        if (abs(normal.x) > 0.3) {
-            mirror = sign(pos.x);  // Left (-x) and Right (+x) faces
-            baseDisplacement *= xzScale;
-        }
-        else if (abs(normal.y) > 0.3) {
-            mirror = sign(pos.y);  // Bottom (-y) and Top (+y) faces
-            baseDisplacement *= 1.8;  // Boost y-axis movement
-        }
-        else if (abs(normal.z) > 0.3) {
-            mirror = sign(pos.z);  // Back (-z) and Front (+z) faces
-            baseDisplacement *= xzScale;
-        }
+        if (abs(normal.x) > 0.3) mirror = sign(pos.x);  // Left (-x) and Right (+x) faces
+        else if (abs(normal.y) > 0.3) mirror = sign(pos.y);  // Bottom (-y) and Top (+y) faces
+        else if (abs(normal.z) > 0.3) mirror = sign(pos.z);  // Back (-z) and Front (+z) faces
 
         // Apply mirror: +face gets +displacement, -face gets -displacement
         float displacement = baseDisplacement * mirror;
-        // Use abs for color to get gradient from inner (dark) to outer (bright)
-        vDisplacement = abs(baseDisplacement);
+        // Use baseDisplacement for color to get proper gradient from inner (dark) to outer (bright)
+        vDisplacement = baseDisplacement;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
 `;
@@ -583,10 +571,16 @@ function onWindowResize() {
 
 /**
  * Create a cube with connected vertices (prevents tearing)
+ * @param {number} width - Width (x-axis)
+ * @param {number} height - Height (y-axis)
+ * @param {number} depth - Depth (z-axis)
+ * @param {number} subdivisions - Number of subdivisions per face
  */
-function createConnectedCube(size, subdivisions) {
+function createConnectedCube(width, height, depth, subdivisions) {
     const geo = new THREE.BufferGeometry();
-    const half = size / 2;
+    const halfX = width / 2;
+    const halfY = height / 2;
+    const halfZ = depth / 2;
     const vertices = [];
     const indices = [];
     const seg = subdivisions;
@@ -604,30 +598,33 @@ function createConnectedCube(size, subdivisions) {
     }
 
     // Generate vertices for all faces
+    // Front and Back faces (x-y plane)
     for (let i = 0; i <= seg; i++) {
         for (let j = 0; j <= seg; j++) {
-            const x = -half + (i / seg) * size;
-            const y = -half + (j / seg) * size;
-            getVertexIndex(x, y, half);  // Front
-            getVertexIndex(x, y, -half); // Back
+            const x = -halfX + (i / seg) * width;
+            const y = -halfY + (j / seg) * height;
+            getVertexIndex(x, y, halfZ);  // Front
+            getVertexIndex(x, y, -halfZ); // Back
         }
     }
 
+    // Top and Bottom faces (x-z plane)
     for (let i = 0; i <= seg; i++) {
         for (let k = 0; k <= seg; k++) {
-            const x = -half + (i / seg) * size;
-            const z = -half + (k / seg) * size;
-            getVertexIndex(x, half, z);  // Top
-            getVertexIndex(x, -half, z); // Bottom
+            const x = -halfX + (i / seg) * width;
+            const z = -halfZ + (k / seg) * depth;
+            getVertexIndex(x, halfY, z);  // Top
+            getVertexIndex(x, -halfY, z); // Bottom
         }
     }
 
+    // Right and Left faces (y-z plane)
     for (let j = 0; j <= seg; j++) {
         for (let k = 0; k <= seg; k++) {
-            const y = -half + (j / seg) * size;
-            const z = -half + (k / seg) * size;
-            getVertexIndex(half, y, z);  // Right
-            getVertexIndex(-half, y, z); // Left
+            const y = -halfY + (j / seg) * height;
+            const z = -halfZ + (k / seg) * depth;
+            getVertexIndex(halfX, y, z);  // Right
+            getVertexIndex(-halfX, y, z); // Left
         }
     }
 
@@ -647,12 +644,12 @@ function createConnectedCube(size, subdivisions) {
 
     // Add indices for each face
     const faceConfigs = [
-        (i, j) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${half.toFixed(6)}`), // Front
-        (i, j) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${(-half).toFixed(6)}`), // Back
-        (i, k) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${half.toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`), // Top
-        (i, k) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${(-half).toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`), // Bottom
-        (j, k) => vertexMap.get(`${half.toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`), // Right
-        (j, k) => vertexMap.get(`${(-half).toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`) // Left
+        (i, j) => vertexMap.get(`${(-halfX + (i / seg) * width).toFixed(6)},${(-halfY + (j / seg) * height).toFixed(6)},${halfZ.toFixed(6)}`), // Front
+        (i, j) => vertexMap.get(`${(-halfX + (i / seg) * width).toFixed(6)},${(-halfY + (j / seg) * height).toFixed(6)},${(-halfZ).toFixed(6)}`), // Back
+        (i, k) => vertexMap.get(`${(-halfX + (i / seg) * width).toFixed(6)},${halfY.toFixed(6)},${(-halfZ + (k / seg) * depth).toFixed(6)}`), // Top
+        (i, k) => vertexMap.get(`${(-halfX + (i / seg) * width).toFixed(6)},${(-halfY).toFixed(6)},${(-halfZ + (k / seg) * depth).toFixed(6)}`), // Bottom
+        (j, k) => vertexMap.get(`${halfX.toFixed(6)},${(-halfY + (j / seg) * height).toFixed(6)},${(-halfZ + (k / seg) * depth).toFixed(6)}`), // Right
+        (j, k) => vertexMap.get(`${(-halfX).toFixed(6)},${(-halfY + (j / seg) * height).toFixed(6)},${(-halfZ + (k / seg) * depth).toFixed(6)}`) // Left
     ];
 
     faceConfigs.forEach(config => addFaceIndices(config));
@@ -679,7 +676,7 @@ function createShape(type) {
 
     switch (type) {
         case 0: geo = new THREE.SphereGeometry(1, 128, 128); break;  // Smooth sphere
-        case 1: geo = createConnectedCube(1.4, CONSTANTS.CUBE_SUBDIVISIONS); break;
+        case 1: geo = createConnectedCube(1.0, 1.8, 1.0, CONSTANTS.CUBE_SUBDIVISIONS); break;  // Tall rectangular prism (width, height, depth)
         case 2: geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128); break;
         case 3: geo = new THREE.ConeGeometry(1, 2, 64, 64); break;
         default: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
