@@ -718,18 +718,17 @@ function animate() {
                 if (!isNaN(shape)) targetY.shape = shape;
             });
         }
-    } else {
-        // Rule-based auto-classification mode (when no training data)
-        const suggestedShape = autoClassifyShape(currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness);
-        if (suggestedShape !== Math.round(currentY.shape)) {
-            targetY.shape = suggestedShape;
+    } else if (state === 'IDLE') {
+        // IDLE state: Keep sphere shape, use default parameters
+        if (currentY.shape !== 0) {
+            currentY.shape = 0;
+            targetY.shape = 0;
+            createShape(0);
         }
-
-        const suggestedParams = autoSuggestParameters(currentX);
-        targetY.y1 = suggestedParams.y1;
-        targetY.y2 = suggestedParams.y2;
-        targetY.y3 = suggestedParams.y3;
-        targetY.y4 = suggestedParams.y4;
+        targetY.y1 = 0.5;
+        targetY.y2 = 0.5;
+        targetY.y3 = 0.5;
+        targetY.y4 = 0.5;
     }
 
     // 시각화 수치 부드럽게 전이 (리뷰 모드에서는 더 빠르게)
