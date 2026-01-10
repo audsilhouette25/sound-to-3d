@@ -246,26 +246,26 @@ const cubeVertexShader = `
 
         float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
 
-        // Determine mirror based on normal direction (not position)
-        // This ensures opposite faces move in opposite directions
+        // Determine mirror based on which face this vertex belongs to
+        // Use strict threshold to identify face normals clearly
         float mirror = 1.0;
-        vec3 absNormal = abs(normal);
 
-        if (absNormal.x > absNormal.y && absNormal.x > absNormal.z) {
-            // X-axis dominant (left/right faces)
+        if (abs(normal.x) > 0.9) {
+            // This vertex is on left or right face
             mirror = sign(normal.x);
-        } else if (absNormal.y > absNormal.x && absNormal.y > absNormal.z) {
-            // Y-axis dominant (top/bottom faces)
+        } else if (abs(normal.y) > 0.9) {
+            // This vertex is on top or bottom face
             mirror = sign(normal.y);
-        } else {
-            // Z-axis dominant (front/back faces)
+        } else if (abs(normal.z) > 0.9) {
+            // This vertex is on front or back face
             mirror = sign(normal.z);
         }
 
-        // Apply mirror: +normal face gets +displacement, -normal face gets -displacement
+        // Apply mirror displacement
         float displacement = baseDisplacement * mirror;
-        // Use baseDisplacement for color to get proper gradient from inner (dark) to outer (bright)
-        vDisplacement = baseDisplacement;
+
+        // Use abs for color to maintain gradient symmetry
+        vDisplacement = abs(baseDisplacement);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
 `;
