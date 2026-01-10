@@ -874,11 +874,27 @@ function confirmTrainingWrapper() {
     // Normalize and train in background after UI is hidden
     brain.normalizeData();
 
+    // Show training overlay
+    const overlay = document.getElementById('training-overlay');
+    const message = document.getElementById('training-message');
+    const progress = document.getElementById('training-progress');
+
+    if (overlay) {
+        overlay.style.display = 'flex';
+        message.textContent = currentLang === 'KR' ? 'AI 모델 학습 중...' : 'Training AI Model...';
+        progress.textContent = currentLang === 'KR' ? '잠시만 기다려주세요 (50 epochs)' : 'Please wait (50 epochs)';
+    }
+
     setTimeout(() => {
         console.log('🎓 Starting training in background...');
         brain.train({ epochs: 50 }, () => {
             isBrainTrained = true;
             console.log('✅ Training complete! AI mode enabled.');
+
+            // Hide training overlay
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
         });
     }, 500);
 }
