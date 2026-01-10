@@ -295,35 +295,30 @@ function autoClassifyShape(features) {
 
     const scores = [0, 0, 0, 0, 0, 0];
 
-    // Sphere: ONLY for extremely smooth, quiet, low sounds (make it VERY hard to trigger)
-    scores[0] = (normalized.roughness < 0.15 ? (1 - normalized.roughness) * 0.5 : 0) +
-                (normalized.pitch < 0.25 ? (1 - normalized.pitch) * 0.3 : 0) +
-                (normalized.loudness < 0.3 ? (1 - normalized.loudness) * 0.2 : 0);
+    // Use main branch's proven classification logic
+    // Sphere: 부드럽고 중간 범위
+    scores[0] = (1 - normalized.roughness) * 0.4 +
+                (normalized.pitch > 0.3 && normalized.pitch < 0.7 ? 0.6 : 0);
 
-    // Cube: Structural sounds - bright and moderately rough
-    scores[1] = (normalized.brightness > 0.35 ? normalized.brightness * 1.0 : 0) +
-                (normalized.roughness > 0.25 && normalized.roughness < 0.7 ? 0.7 : normalized.roughness * 0.3) +
-                (normalized.pitch > 0.25 && normalized.pitch < 0.65 ? 0.4 : 0);
+    // Cube: 밝고 적당히 거친
+    scores[1] = normalized.brightness * 0.5 +
+                (normalized.roughness > 0.3 && normalized.roughness < 0.7 ? 0.5 : 0);
 
-    // Torus: Circular sounds - mid-high pitch with energy
-    scores[2] = (normalized.pitch > 0.4 && normalized.pitch < 0.8 ? 1.0 : normalized.pitch * 0.4) +
-                (normalized.loudness > 0.2 ? normalized.loudness * 0.6 : 0) +
-                (normalized.brightness > 0.25 ? normalized.brightness * 0.3 : 0);
+    // Torus: 중간-높은 pitch, 회전감
+    scores[2] = (normalized.pitch > 0.5 ? 0.6 : 0.2) +
+                normalized.loudness * 0.4;
 
-    // Cone: Sharp, pointed sounds - high pitch + brightness
-    scores[3] = (normalized.pitch > 0.6 ? normalized.pitch * 1.0 : normalized.pitch * 0.3) +
-                (normalized.brightness > 0.5 ? normalized.brightness * 0.7 : normalized.brightness * 0.2) +
-                (normalized.roughness < 0.6 ? 0.3 : 0);
+    // Cone: 높고 날카로운
+    scores[3] = (normalized.pitch > 0.6 ? 0.5 : 0) +
+                (normalized.brightness > 0.6 ? 0.5 : 0);
 
-    // Cylinder: Smooth, sustained sounds with energy
-    scores[4] = (normalized.roughness < 0.3 ? (1 - normalized.roughness) * 0.8 : 0) +
-                (normalized.loudness > 0.4 ? normalized.loudness * 0.7 : normalized.loudness * 0.2) +
-                (normalized.brightness > 0.3 && normalized.brightness < 0.75 ? 0.5 : 0);
+    // Cylinder: 일정하고 연속적
+    scores[4] = (1 - normalized.roughness) * 0.5 +
+                (normalized.loudness > 0.3 ? 0.5 : 0);
 
-    // Octahedron: Complex, rough, energetic sounds
-    scores[5] = (normalized.roughness > 0.5 ? normalized.roughness * 1.0 : normalized.roughness * 0.3) +
-                (normalized.brightness > 0.4 ? normalized.brightness * 0.6 : 0) +
-                (normalized.loudness > 0.3 ? normalized.loudness * 0.4 : 0);
+    // Octahedron: 복잡하고 거친
+    scores[5] = normalized.roughness * 0.6 +
+                (normalized.brightness > 0.5 ? 0.4 : 0.2);
 
     console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
 
