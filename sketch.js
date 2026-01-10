@@ -895,7 +895,12 @@ function loadTrainingData() {
 }
 
 function clearAllData() {
-    if(confirm("데이터 삭제?")) { localStorage.removeItem('soundTo3D_data'); location.reload(); }
+    const message = currentLang === 'KR' ? "정말로 모든 학습 데이터를 삭제하시겠습니까?" : "Are you sure you want to delete all training data?";
+    if(confirm(message)) {
+        localStorage.removeItem('soundTo3D_data');
+        customTrainingData = [];
+        location.reload();
+    }
 }
 
 // --- UI & Translation ---
