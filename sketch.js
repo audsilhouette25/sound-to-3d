@@ -254,7 +254,7 @@ const cubeVertexShader = `
 
         // Apply mirror: +x face gets +displacement, -x face gets -displacement
         float displacement = baseDisplacement * mirror;
-        vDisplacement = displacement;
+        vDisplacement = abs(displacement);  // Use abs for consistent color (avoid negative values in color calculation)
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
 `;
