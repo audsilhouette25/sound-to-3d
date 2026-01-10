@@ -246,15 +246,16 @@ const cubeVertexShader = `
 
         float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
 
-        // Determine which axis based on normal direction
+        // Determine which axis based on normal direction (lowered threshold for edge cases)
         float mirror = 1.0;
-        if (abs(normal.x) > 0.5) mirror = sign(pos.x);  // Left (-x) and Right (+x) faces
-        else if (abs(normal.y) > 0.5) mirror = sign(pos.y);  // Bottom (-y) and Top (+y) faces
-        else if (abs(normal.z) > 0.5) mirror = sign(pos.z);  // Back (-z) and Front (+z) faces
+        if (abs(normal.x) > 0.3) mirror = sign(pos.x);  // Left (-x) and Right (+x) faces
+        else if (abs(normal.y) > 0.3) mirror = sign(pos.y);  // Bottom (-y) and Top (+y) faces
+        else if (abs(normal.z) > 0.3) mirror = sign(pos.z);  // Back (-z) and Front (+z) faces
 
         // Apply mirror: +x face gets +displacement, -x face gets -displacement
         float displacement = baseDisplacement * mirror;
-        vDisplacement = abs(displacement);  // Use abs for consistent color (avoid negative values in color calculation)
+        // Use baseDisplacement for color to get gradient from inner (dark) to outer (bright)
+        vDisplacement = baseDisplacement;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
 `;
