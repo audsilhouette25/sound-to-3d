@@ -490,23 +490,41 @@ function saveRecording() {
         recordedX.brightness /= recordedX.count;
         recordedX.roughness /= recordedX.count;
 
-        // Auto-classify shape based on recorded audio features
         console.log('📝 Recorded audio features:', recordedX);
-        const autoShape = autoClassifyShape(
-            recordedX.loudness,
-            recordedX.pitch,
-            recordedX.brightness,
-            recordedX.roughness
-        );
 
-        // Set shape selector to auto-classified shape
-        const shapeSelector = document.getElementById('shape-selector');
-        if (shapeSelector) {
-            shapeSelector.value = autoShape;
-            console.log('✏️ Set shape selector value to:', autoShape);
+        // Use AI prediction if training data exists, otherwise use rule-based classification
+        if (customTrainingData.length > 0) {
+            // Use AI prediction
+            brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, results) => {
+                if (!err && results && results.length === 5) {
+                    const predictedShape = Math.round(results[4] * 5);
+                    const shapeSelector = document.getElementById('shape-selector');
+                    if (shapeSelector) {
+                        shapeSelector.value = predictedShape;
+                        console.log('🤖 AI predicted shape:', SHAPE_NAMES[predictedShape]);
+                    }
+                    // Update the current shape immediately
+                    changeShape(predictedShape);
+                }
+            });
+        } else {
+            // No training data: use rule-based classification
+            const autoShape = autoClassifyShape(
+                recordedX.loudness,
+                recordedX.pitch,
+                recordedX.brightness,
+                recordedX.roughness
+            );
+
+            // Set shape selector to auto-classified shape
+            const shapeSelector = document.getElementById('shape-selector');
+            if (shapeSelector) {
+                shapeSelector.value = autoShape;
+                console.log('✏️ Rule-based shape:', SHAPE_NAMES[autoShape]);
+            }
+            // Update the current shape immediately
+            changeShape(autoShape);
         }
-
-        console.log('🎯 Auto-classified shape for recording:', SHAPE_NAMES[autoShape]);
     }
 }
 
