@@ -295,29 +295,35 @@ function autoClassifyShape(features) {
 
     const scores = [0, 0, 0, 0, 0, 0];
 
-    // Sphere: smooth and low-mid pitch
-    scores[0] = (1 - normalized.roughness) * 0.5 +
-                (normalized.pitch > 0.1 && normalized.pitch < 0.4 ? 0.5 : 0.1);
+    // Sphere: Very smooth (low roughness) with balanced features
+    scores[0] = (normalized.roughness < 0.25 ? (1 - normalized.roughness) * 0.8 : 0) +
+                (normalized.pitch > 0.2 && normalized.pitch < 0.5 ? 0.3 : 0) +
+                (normalized.brightness < 0.4 ? (1 - normalized.brightness) * 0.2 : 0);
 
-    // Cube: bright with moderate roughness
-    scores[1] = (normalized.brightness > 0.3 ? normalized.brightness * 0.6 : 0) +
-                (normalized.roughness > 0.3 && normalized.roughness < 0.7 ? 0.4 : 0);
+    // Cube: High brightness and structural (moderate roughness, not too smooth)
+    scores[1] = (normalized.brightness > 0.5 ? normalized.brightness * 0.6 : normalized.brightness * 0.2) +
+                (normalized.roughness > 0.3 && normalized.roughness < 0.65 ? 0.5 : 0) +
+                (normalized.pitch > 0.3 && normalized.pitch < 0.6 ? 0.2 : 0);
 
-    // Torus: medium-high pitch with good loudness
-    scores[2] = (normalized.pitch > 0.4 && normalized.pitch < 0.8 ? 0.5 : 0) +
-                (normalized.loudness > 0.2 ? normalized.loudness * 0.5 : 0);
+    // Torus: Circular motion = medium-high pitch with consistent loudness
+    scores[2] = (normalized.pitch > 0.45 && normalized.pitch < 0.75 ? 0.7 : 0) +
+                (normalized.loudness > 0.25 && normalized.loudness < 0.75 ? 0.4 : 0) +
+                (normalized.brightness > 0.3 ? 0.2 : 0);
 
-    // Cone: very high and sharp
-    scores[3] = (normalized.pitch > 0.7 ? normalized.pitch * 0.6 : 0) +
-                (normalized.brightness > 0.7 ? normalized.brightness * 0.4 : 0);
+    // Cone: Sharp and pointed = very high pitch + high brightness
+    scores[3] = (normalized.pitch > 0.65 ? normalized.pitch * 0.7 : 0) +
+                (normalized.brightness > 0.6 ? normalized.brightness * 0.5 : 0) +
+                (normalized.roughness < 0.5 ? 0.1 : 0);
 
-    // Cylinder: very smooth with high loudness
-    scores[4] = (normalized.roughness < 0.3 ? (1 - normalized.roughness) * 0.5 : 0) +
-                (normalized.loudness > 0.5 ? normalized.loudness * 0.5 : 0);
+    // Cylinder: Smooth elongated = very smooth + high loudness + mid brightness
+    scores[4] = (normalized.roughness < 0.2 ? (1 - normalized.roughness) * 0.6 : 0) +
+                (normalized.loudness > 0.5 ? normalized.loudness * 0.5 : 0) +
+                (normalized.brightness > 0.4 && normalized.brightness < 0.7 ? 0.3 : 0);
 
-    // Octahedron: complex and rough
-    scores[5] = (normalized.roughness > 0.5 ? normalized.roughness * 0.7 : 0) +
-                (normalized.brightness * 0.3);
+    // Octahedron: Complex and angular = high roughness + high brightness
+    scores[5] = (normalized.roughness > 0.55 ? normalized.roughness * 0.7 : normalized.roughness * 0.2) +
+                (normalized.brightness > 0.45 ? normalized.brightness * 0.4 : 0) +
+                (normalized.pitch > 0.5 ? 0.2 : 0);
 
     console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
 
