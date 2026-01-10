@@ -130,29 +130,29 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
 
     const scores = [0, 0, 0, 0, 0, 0];
 
-    // Sphere: smooth and mid-range
-    scores[0] = (1 - normalizedRoughness) * 0.4 +
-                (normalizedPitch > 0.3 && normalizedPitch < 0.7 ? 0.6 : 0);
+    // Sphere: smooth and low-mid pitch (default safe choice)
+    scores[0] = (1 - normalizedRoughness) * 0.5 +
+                (normalizedPitch > 0.1 && normalizedPitch < 0.4 ? 0.5 : 0.1);
 
-    // Cube: bright and moderately rough
-    scores[1] = normalizedBrightness * 0.5 +
-                (normalizedRoughness > 0.3 && normalizedRoughness < 0.7 ? 0.5 : 0);
+    // Cube: bright with moderate roughness
+    scores[1] = (normalizedBrightness > 0.3 ? normalizedBrightness * 0.6 : 0) +
+                (normalizedRoughness > 0.3 && normalizedRoughness < 0.7 ? 0.4 : 0);
 
-    // Torus: medium-high pitch, rotating feel
-    scores[2] = (normalizedPitch > 0.5 ? 0.6 : 0.2) +
-                normalizedLoudness * 0.4;
+    // Torus: medium-high pitch with good loudness
+    scores[2] = (normalizedPitch > 0.4 && normalizedPitch < 0.8 ? 0.5 : 0) +
+                (normalizedLoudness > 0.2 ? normalizedLoudness * 0.5 : 0);
 
-    // Cone: high and sharp
-    scores[3] = (normalizedPitch > 0.6 ? 0.5 : 0) +
-                (normalizedBrightness > 0.6 ? 0.5 : 0);
+    // Cone: very high and sharp (strict conditions)
+    scores[3] = (normalizedPitch > 0.7 ? normalizedPitch * 0.6 : 0) +
+                (normalizedBrightness > 0.7 ? normalizedBrightness * 0.4 : 0);
 
-    // Cylinder: consistent and continuous
-    scores[4] = (1 - normalizedRoughness) * 0.5 +
-                (normalizedLoudness > 0.3 ? 0.5 : 0);
+    // Cylinder: very smooth with high loudness (stricter)
+    scores[4] = (normalizedRoughness < 0.3 ? (1 - normalizedRoughness) * 0.5 : 0) +
+                (normalizedLoudness > 0.5 ? normalizedLoudness * 0.5 : 0);
 
     // Octahedron: complex and rough
-    scores[5] = normalizedRoughness * 0.6 +
-                (normalizedBrightness > 0.5 ? 0.4 : 0.2);
+    scores[5] = (normalizedRoughness > 0.5 ? normalizedRoughness * 0.7 : 0) +
+                (normalizedBrightness * 0.3);
 
     console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
 
