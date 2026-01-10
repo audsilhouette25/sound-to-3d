@@ -14,8 +14,8 @@ let currentLang = 'KR';
 let micStream = null;
 
 // API Configuration
-const API_URL = 'https://sound-to-3d-server.onrender.com'; // Will be updated after deployment
-const USE_SERVER = false; // Set to true after server is deployed
+const API_URL = 'https://sound-to-3d-server.onrender.com';
+const USE_SERVER = true; // Server enabled - data syncs across all browsers
 
 // Rendering optimization variables (from main branch)
 let predictionFrameCounter = 0;
