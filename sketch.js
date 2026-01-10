@@ -237,35 +237,36 @@ const cubeVertexShader = `
         vNormal = normal;
         vec3 pos = position;
 
-        // Mirror effect: use absolute position for noise so mirrored points get same base value
-        vec3 absPos = abs(pos);
-        float noiseVal = noise(absPos * (2.0 + uY4 * 8.0) + uTime * 0.4);
+        // Determine which face this vertex belongs to and get mirror direction
+        float mirrorDir = 1.0;
+        vec3 noisePos = pos;
+
+        if (abs(normal.x) > 0.9) {
+            // Left/Right faces - mirror on x-axis
+            mirrorDir = sign(normal.x);
+            noisePos.x = abs(pos.x);  // Use same noise for mirrored faces
+        } else if (abs(normal.y) > 0.9) {
+            // Top/Bottom faces - mirror on y-axis
+            mirrorDir = sign(normal.y);
+            noisePos.y = abs(pos.y);
+        } else if (abs(normal.z) > 0.9) {
+            // Front/Back faces - mirror on z-axis
+            mirrorDir = sign(normal.z);
+            noisePos.z = abs(pos.z);
+        }
+
+        // Calculate displacement using mirrored noise position
+        float noiseVal = noise(noisePos * (2.0 + uY4 * 8.0) + uTime * 0.4);
         float angular = floor(noiseVal * (1.0 + (1.0-uY1)*12.0)) / (1.0 + (1.0-uY1)*12.0);
         float finalNoise = mix(noiseVal, angular, uY1);
-        float wave = sin(absPos.x * 12.0 + uTime) * uY2 * 0.45;
+        float wave = sin(noisePos.x * 12.0 + uTime) * uY2 * 0.45;
 
         float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
 
-        // Determine mirror based on which face this vertex belongs to
-        // Use strict threshold to identify face normals clearly
-        float mirror = 1.0;
+        // Apply mirror direction to create opposite movement
+        float displacement = baseDisplacement * mirrorDir;
 
-        if (abs(normal.x) > 0.9) {
-            // This vertex is on left or right face
-            mirror = sign(normal.x);
-        } else if (abs(normal.y) > 0.9) {
-            // This vertex is on top or bottom face
-            mirror = sign(normal.y);
-        } else if (abs(normal.z) > 0.9) {
-            // This vertex is on front or back face
-            mirror = sign(normal.z);
-        }
-
-        // Apply mirror displacement
-        float displacement = baseDisplacement * mirror;
-
-        // Use abs for color to maintain gradient symmetry
-        vDisplacement = abs(baseDisplacement);
+        vDisplacement = baseDisplacement;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
 `;
