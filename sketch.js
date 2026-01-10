@@ -7,7 +7,7 @@
 const API_URL = 'https://sound-to-3d-server.onrender.com';
 const USE_SERVER = true; // Server enabled - data syncs across all browsers
 
-const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Tetrahedron'];
+const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder'];
 
 const CONSTANTS = {
     // Audio normalization
@@ -192,12 +192,20 @@ const vertexShader = `
     void main() {
         vNormal = normal;
         vec3 pos = position;
+
+        // Mirror effect: opposite faces move in opposite directions
+        float mirrorX = sign(pos.x);
+        float mirrorY = sign(pos.y);
+        float mirrorZ = sign(pos.z);
+
         float noiseVal = noise(pos * (2.0 + uY4 * 8.0) + uTime * 0.4);
         float angular = floor(noiseVal * (1.0 + (1.0-uY1)*12.0)) / (1.0 + (1.0-uY1)*12.0);
         float finalNoise = mix(noiseVal, angular, uY1);
         float wave = sin(pos.x * 12.0 + uTime) * uY2 * 0.45;
 
-        float displacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
+        float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
+        // Apply mirror effect on x and z axes (opposite faces move in opposite directions)
+        float displacement = baseDisplacement * mirrorX * mirrorZ;
         vDisplacement = displacement;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
@@ -293,17 +301,17 @@ function autoClassifyShape(features) {
         }
     });
 
-    const scores = [0, 0, 0, 0, 0, 0];
+    const scores = [0, 0, 0, 0, 0];
 
     // Sphere: 부드럽고 조용한 (ONLY for very smooth and quiet sounds)
     scores[0] = (normalized.roughness < 0.3 ? (1 - normalized.roughness) * 0.5 : 0) +
                 (normalized.loudness < 0.4 ? (1 - normalized.loudness) * 0.3 : 0) +
                 (normalized.pitch > 0.3 && normalized.pitch < 0.7 ? 0.2 : 0);
 
-    // Cube: 밝고 적당히 거친 (sharp percussive sounds)
+    // Cube: 거칠고 밝은 타악기 소리 (percussion, claps, rough sounds)
     scores[1] = normalized.brightness * 0.6 +
-                (normalized.roughness > 0.4 ? normalized.roughness * 0.6 : 0) +
-                (normalized.loudness > 0.5 ? 0.3 : 0);
+                (normalized.roughness > 0.3 ? normalized.roughness * 0.9 : 0) +
+                (normalized.loudness > 0.4 ? normalized.loudness * 0.5 : 0);
 
     // Torus: 중간-높은 pitch, 회전감
     scores[2] = (normalized.pitch > 0.5 ? normalized.pitch * 0.7 : 0.2) +
@@ -317,16 +325,11 @@ function autoClassifyShape(features) {
     scores[4] = (normalized.roughness < 0.4 ? (1 - normalized.roughness) * 0.6 : 0) +
                 (normalized.loudness > 0.5 ? normalized.loudness * 0.7 : 0);
 
-    // Tetrahedron: 복잡하고 거친 (percussion, claps, rough sounds - sharp and edgy)
-    scores[5] = (normalized.roughness > 0.4 ? normalized.roughness * 0.8 : normalized.roughness * 0.3) +
-                (normalized.loudness > 0.6 ? normalized.loudness * 0.5 : 0) +
-                (normalized.brightness > 0.3 ? 0.3 : 0);
-
     console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
 
     let maxScore = -1;
     let bestShape = 0;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 5; i++) {
         if (scores[i] > maxScore) {
             maxScore = scores[i];
             bestShape = i;
@@ -373,7 +376,7 @@ function performAIPrediction(features, callback) {
                 y2: results[1],
                 y3: results[2],
                 y4: results[3],
-                shape: Math.min(5, Math.max(0, Math.round(results[4] * 5)))
+                shape: Math.min(4, Math.max(0, Math.round(results[4] * 4)))
             });
         }
     );
@@ -417,7 +420,7 @@ function shouldChangeShape() {
     const delta = Math.abs(appState.visuals.current.shape - roundedShape);
     return delta > CONSTANTS.SHAPE_CHANGE_THRESHOLD &&
            roundedShape !== appState.visuals.previousShape &&
-           roundedShape >= 0 && roundedShape <= 5;
+           roundedShape >= 0 && roundedShape <= 4;
 }
 
 // --- Resource Management ---
@@ -628,8 +631,7 @@ function createShape(type) {
         case 1: geo = createConnectedCube(1.4, CONSTANTS.CUBE_SUBDIVISIONS); break;
         case 2: geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128); break;
         case 3: geo = new THREE.ConeGeometry(1, 2, 64, 64); break;
-        case 4: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
-        default: geo = new THREE.TetrahedronGeometry(1.2, 16); break;  // Tetrahedron for percussive sounds
+        default: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
     }
 
     const mat = new THREE.ShaderMaterial({
@@ -1057,7 +1059,7 @@ function animate() {
 
     // Shape change detection (optimized)
     const roundedShape = Math.round(appState.visuals.current.shape);
-    if (roundedShape !== appState.visuals.previousShape && roundedShape >= 0 && roundedShape <= 5) {
+    if (roundedShape !== appState.visuals.previousShape && roundedShape >= 0 && roundedShape <= 4) {
         appState.visuals.previousShape = roundedShape;
         createShape(roundedShape);
         updateShapeNameDisplay();
@@ -1421,7 +1423,7 @@ const translations = {
         shapeLabel: "기본 형태",
         dataLabel: "학습 데이터:",
         samplesLabel: "개",
-        shapeNames: ['구', '정육면체', '토러스', '원뿔', '원기둥', '사면체']
+        shapeNames: ['구', '정육면체', '토러스', '원뿔', '원기둥']
     },
     EN: {
         title: "IML Research",
@@ -1457,7 +1459,7 @@ const translations = {
         shapeLabel: "Base Shape",
         dataLabel: "Data:",
         samplesLabel: "samples",
-        shapeNames: ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Tetrahedron']
+        shapeNames: ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder']
     }
 };
 
