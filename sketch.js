@@ -861,16 +861,19 @@ function confirmTrainingWrapper() {
         return;
     }
 
-    brain.train({ epochs: 50 }, () => {
-        alert(currentLang === 'KR' ? "학습 완료! 실시간 모드" : "Training Done! Real-time mode.");
-        const dc = document.getElementById('data-count'); if(dc) dc.innerText = customTrainingData.length;
-        state = 'IDLE';
-        document.getElementById('labeling-zone').style.display = 'none';
-        document.getElementById('btn-play').style.display = 'none';
-        document.getElementById('btn-confirm').style.display = 'none';
-        updateStatus(translations[currentLang].statusReady, 'status-idle');
-        updateAllUIText();
-    });
+    // Use setTimeout to prevent blocking graphics rendering
+    setTimeout(() => {
+        brain.train({ epochs: 20 }, () => {
+            alert(currentLang === 'KR' ? "학습 완료! 실시간 모드" : "Training Done! Real-time mode.");
+            const dc = document.getElementById('data-count'); if(dc) dc.innerText = customTrainingData.length;
+            state = 'IDLE';
+            document.getElementById('labeling-zone').style.display = 'none';
+            document.getElementById('btn-play').style.display = 'none';
+            document.getElementById('btn-confirm').style.display = 'none';
+            updateStatus(translations[currentLang].statusReady, 'status-idle');
+            updateAllUIText();
+        });
+    }, 100);
 }
 
 async function saveTrainingData() {
