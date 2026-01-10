@@ -107,27 +107,171 @@ function onWindowResize() {
     renderer.setSize(rightPanelWidth, window.innerHeight);
 }
 
+function createConnectedCube(size, subdivisions) {
+    const geo = new THREE.BufferGeometry();
+    const half = size / 2;
+    const vertices = [];
+    const indices = [];
+
+    // Create a grid of vertices for each face, with shared edges
+    const seg = subdivisions;
+    const vertexMap = new Map(); // To track shared vertices at edges
+
+    // Helper to get/create vertex index
+    function getVertexIndex(x, y, z) {
+        const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
+        if (vertexMap.has(key)) {
+            return vertexMap.get(key);
+        }
+        const index = vertices.length / 3;
+        vertices.push(x, y, z);
+        vertexMap.set(key, index);
+        return index;
+    }
+
+    // Generate each face with subdivisions
+    // Front face (z = +half)
+    for (let i = 0; i <= seg; i++) {
+        for (let j = 0; j <= seg; j++) {
+            const x = -half + (i / seg) * size;
+            const y = -half + (j / seg) * size;
+            getVertexIndex(x, y, half);
+        }
+    }
+
+    // Back face (z = -half)
+    for (let i = 0; i <= seg; i++) {
+        for (let j = 0; j <= seg; j++) {
+            const x = -half + (i / seg) * size;
+            const y = -half + (j / seg) * size;
+            getVertexIndex(x, y, -half);
+        }
+    }
+
+    // Top face (y = +half)
+    for (let i = 0; i <= seg; i++) {
+        for (let k = 0; k <= seg; k++) {
+            const x = -half + (i / seg) * size;
+            const z = -half + (k / seg) * size;
+            getVertexIndex(x, half, z);
+        }
+    }
+
+    // Bottom face (y = -half)
+    for (let i = 0; i <= seg; i++) {
+        for (let k = 0; k <= seg; k++) {
+            const x = -half + (i / seg) * size;
+            const z = -half + (k / seg) * size;
+            getVertexIndex(x, -half, z);
+        }
+    }
+
+    // Right face (x = +half)
+    for (let j = 0; j <= seg; j++) {
+        for (let k = 0; k <= seg; k++) {
+            const y = -half + (j / seg) * size;
+            const z = -half + (k / seg) * size;
+            getVertexIndex(half, y, z);
+        }
+    }
+
+    // Left face (x = -half)
+    for (let j = 0; j <= seg; j++) {
+        for (let k = 0; k <= seg; k++) {
+            const y = -half + (j / seg) * size;
+            const z = -half + (k / seg) * size;
+            getVertexIndex(-half, y, z);
+        }
+    }
+
+    // Generate indices for all faces
+    function addFaceIndices(getIndex) {
+        for (let i = 0; i < seg; i++) {
+            for (let j = 0; j < seg; j++) {
+                const a = getIndex(i, j);
+                const b = getIndex(i + 1, j);
+                const c = getIndex(i + 1, j + 1);
+                const d = getIndex(i, j + 1);
+
+                indices.push(a, b, c);
+                indices.push(a, c, d);
+            }
+        }
+    }
+
+    // Front face indices
+    addFaceIndices((i, j) => {
+        const x = -half + (i / seg) * size;
+        const y = -half + (j / seg) * size;
+        return vertexMap.get(`${x.toFixed(6)},${y.toFixed(6)},${half.toFixed(6)}`);
+    });
+
+    // Back face indices
+    addFaceIndices((i, j) => {
+        const x = -half + (i / seg) * size;
+        const y = -half + (j / seg) * size;
+        return vertexMap.get(`${x.toFixed(6)},${y.toFixed(6)},${(-half).toFixed(6)}`);
+    });
+
+    // Top face indices
+    addFaceIndices((i, k) => {
+        const x = -half + (i / seg) * size;
+        const z = -half + (k / seg) * size;
+        return vertexMap.get(`${x.toFixed(6)},${half.toFixed(6)},${z.toFixed(6)}`);
+    });
+
+    // Bottom face indices
+    addFaceIndices((i, k) => {
+        const x = -half + (i / seg) * size;
+        const z = -half + (k / seg) * size;
+        return vertexMap.get(`${x.toFixed(6)},${(-half).toFixed(6)},${z.toFixed(6)}`);
+    });
+
+    // Right face indices
+    addFaceIndices((j, k) => {
+        const y = -half + (j / seg) * size;
+        const z = -half + (k / seg) * size;
+        return vertexMap.get(`${half.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`);
+    });
+
+    // Left face indices
+    addFaceIndices((j, k) => {
+        const y = -half + (j / seg) * size;
+        const z = -half + (k / seg) * size;
+        return vertexMap.get(`${(-half).toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`);
+    });
+
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+
+    return geo;
+}
+
 function createShape(type) {
-    if (currentMesh) { 
-        scene.remove(currentMesh); 
-        if(currentMesh.geometry) currentMesh.geometry.dispose(); 
+    if (currentMesh) {
+        scene.remove(currentMesh);
+        if(currentMesh.geometry) currentMesh.geometry.dispose();
         if(currentMesh.material) currentMesh.material.dispose();
     }
     let geo;
     type = parseInt(type);
     if (type === 0) geo = new THREE.SphereGeometry(1, 128, 128);
-    else if (type === 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
+    else if (type === 1) {
+        // Manually create cube with connected vertices (from 0109수정(화인))
+        geo = createConnectedCube(1.4, 32); // 32 subdivisions per edge
+    }
     else if (type === 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
     else if (type === 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
     else if (type === 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
     else geo = new THREE.OctahedronGeometry(1.2, 32);
 
-    const mat = new THREE.ShaderMaterial({ 
-        uniforms: shaderUniforms, 
-        vertexShader, 
-        fragmentShader, 
-        wireframe: true, 
-        transparent: true 
+    const mat = new THREE.ShaderMaterial({
+        uniforms: shaderUniforms,
+        vertexShader,
+        fragmentShader,
+        wireframe: true,
+        transparent: true
     });
     currentMesh = new THREE.Mesh(geo, mat);
     scene.add(currentMesh);
