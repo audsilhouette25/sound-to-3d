@@ -691,6 +691,14 @@ function createShape(type) {
     });
 
     appState.visuals.mesh = new THREE.Mesh(geo, mat);
+
+    // Ensure mesh is centered at origin
+    appState.visuals.mesh.position.set(0, 0, 0);
+
+    // Preserve rotation.y if mesh existed before, otherwise start at 0
+    const currentRotationY = appState.visuals.mesh.rotation ? appState.visuals.mesh.rotation.y : 0;
+    appState.visuals.mesh.rotation.set(0, currentRotationY, 0);
+
     appState.visuals.scene.add(appState.visuals.mesh);
 }
 
