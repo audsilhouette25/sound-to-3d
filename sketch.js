@@ -295,35 +295,35 @@ function autoClassifyShape(features) {
 
     const scores = [0, 0, 0, 0, 0, 0];
 
-    // Sphere: Very smooth (low roughness) with balanced features
-    scores[0] = (normalized.roughness < 0.25 ? (1 - normalized.roughness) * 0.8 : 0) +
-                (normalized.pitch > 0.2 && normalized.pitch < 0.5 ? 0.3 : 0) +
-                (normalized.brightness < 0.4 ? (1 - normalized.brightness) * 0.2 : 0);
+    // Sphere: ONLY for extremely smooth, quiet, low sounds (make it VERY hard to trigger)
+    scores[0] = (normalized.roughness < 0.15 ? (1 - normalized.roughness) * 0.5 : 0) +
+                (normalized.pitch < 0.25 ? (1 - normalized.pitch) * 0.3 : 0) +
+                (normalized.loudness < 0.3 ? (1 - normalized.loudness) * 0.2 : 0);
 
-    // Cube: High brightness and structural (moderate roughness, not too smooth)
-    scores[1] = (normalized.brightness > 0.5 ? normalized.brightness * 0.6 : normalized.brightness * 0.2) +
-                (normalized.roughness > 0.3 && normalized.roughness < 0.65 ? 0.5 : 0) +
-                (normalized.pitch > 0.3 && normalized.pitch < 0.6 ? 0.2 : 0);
+    // Cube: Structural sounds - bright and moderately rough
+    scores[1] = (normalized.brightness > 0.35 ? normalized.brightness * 1.0 : 0) +
+                (normalized.roughness > 0.25 && normalized.roughness < 0.7 ? 0.7 : normalized.roughness * 0.3) +
+                (normalized.pitch > 0.25 && normalized.pitch < 0.65 ? 0.4 : 0);
 
-    // Torus: Circular motion = medium-high pitch with consistent loudness
-    scores[2] = (normalized.pitch > 0.45 && normalized.pitch < 0.75 ? 0.7 : 0) +
-                (normalized.loudness > 0.25 && normalized.loudness < 0.75 ? 0.4 : 0) +
-                (normalized.brightness > 0.3 ? 0.2 : 0);
+    // Torus: Circular sounds - mid-high pitch with energy
+    scores[2] = (normalized.pitch > 0.4 && normalized.pitch < 0.8 ? 1.0 : normalized.pitch * 0.4) +
+                (normalized.loudness > 0.2 ? normalized.loudness * 0.6 : 0) +
+                (normalized.brightness > 0.25 ? normalized.brightness * 0.3 : 0);
 
-    // Cone: Sharp and pointed = very high pitch + high brightness
-    scores[3] = (normalized.pitch > 0.65 ? normalized.pitch * 0.7 : 0) +
-                (normalized.brightness > 0.6 ? normalized.brightness * 0.5 : 0) +
-                (normalized.roughness < 0.5 ? 0.1 : 0);
+    // Cone: Sharp, pointed sounds - high pitch + brightness
+    scores[3] = (normalized.pitch > 0.6 ? normalized.pitch * 1.0 : normalized.pitch * 0.3) +
+                (normalized.brightness > 0.5 ? normalized.brightness * 0.7 : normalized.brightness * 0.2) +
+                (normalized.roughness < 0.6 ? 0.3 : 0);
 
-    // Cylinder: Smooth elongated = very smooth + high loudness + mid brightness
-    scores[4] = (normalized.roughness < 0.2 ? (1 - normalized.roughness) * 0.6 : 0) +
-                (normalized.loudness > 0.5 ? normalized.loudness * 0.5 : 0) +
-                (normalized.brightness > 0.4 && normalized.brightness < 0.7 ? 0.3 : 0);
+    // Cylinder: Smooth, sustained sounds with energy
+    scores[4] = (normalized.roughness < 0.3 ? (1 - normalized.roughness) * 0.8 : 0) +
+                (normalized.loudness > 0.4 ? normalized.loudness * 0.7 : normalized.loudness * 0.2) +
+                (normalized.brightness > 0.3 && normalized.brightness < 0.75 ? 0.5 : 0);
 
-    // Octahedron: Complex and angular = high roughness + high brightness
-    scores[5] = (normalized.roughness > 0.55 ? normalized.roughness * 0.7 : normalized.roughness * 0.2) +
-                (normalized.brightness > 0.45 ? normalized.brightness * 0.4 : 0) +
-                (normalized.pitch > 0.5 ? 0.2 : 0);
+    // Octahedron: Complex, rough, energetic sounds
+    scores[5] = (normalized.roughness > 0.5 ? normalized.roughness * 1.0 : normalized.roughness * 0.3) +
+                (normalized.brightness > 0.4 ? normalized.brightness * 0.6 : 0) +
+                (normalized.loudness > 0.3 ? normalized.loudness * 0.4 : 0);
 
     console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
 
@@ -410,17 +410,19 @@ function updateTargetVisuals() {
                 appState.visuals.predictionFrameCounter = 0;
                 performAIPrediction(appState.audio.features, (prediction) => {
                     if (prediction) {
-                        // Blend AI (70%) with rule-based (30%) for smoother results
-                        const AI_WEIGHT = 0.7;
-                        const RULE_WEIGHT = 0.3;
+                        // Blend AI (50%) with rule-based (50%) for balanced results
+                        const AI_WEIGHT = 0.5;
+                        const RULE_WEIGHT = 0.5;
 
                         appState.visuals.target.y1 = prediction.y1 * AI_WEIGHT + ruleBased.params.y1 * RULE_WEIGHT;
                         appState.visuals.target.y2 = prediction.y2 * AI_WEIGHT + ruleBased.params.y2 * RULE_WEIGHT;
                         appState.visuals.target.y3 = prediction.y3 * AI_WEIGHT + ruleBased.params.y3 * RULE_WEIGHT;
                         appState.visuals.target.y4 = prediction.y4 * AI_WEIGHT + ruleBased.params.y4 * RULE_WEIGHT;
 
-                        // Use AI shape but fallback to rule-based if AI is uncertain
-                        appState.visuals.target.shape = prediction.shape;
+                        // Blend shapes too: Use rule-based shape more often for diversity
+                        // Use AI shape 60% of the time, rule-based 40%
+                        const useAIShape = Math.random() < 0.6;
+                        appState.visuals.target.shape = useAIShape ? prediction.shape : ruleBased.shape;
                     } else {
                         // Fallback to pure rule-based if AI prediction fails
                         appState.visuals.target.shape = ruleBased.shape;
