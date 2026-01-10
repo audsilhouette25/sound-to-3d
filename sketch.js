@@ -239,16 +239,20 @@ const cubeVertexShader = `
 
         // Mirror position to create symmetrical patterns on opposite faces
         vec3 noisePos = pos;
+        float normalSign = 1.0;
 
         if (abs(normal.x) > 0.9) {
             // Left/Right faces - mirror on x-axis
-            noisePos.x = abs(pos.x);  // Use same noise for mirrored faces
+            noisePos.x = abs(pos.x);
+            normalSign = sign(normal.x);
         } else if (abs(normal.y) > 0.9) {
             // Top/Bottom faces - mirror on y-axis
             noisePos.y = abs(pos.y);
+            normalSign = sign(normal.y);
         } else if (abs(normal.z) > 0.9) {
             // Front/Back faces - mirror on z-axis
             noisePos.z = abs(pos.z);
+            normalSign = sign(normal.z);
         }
 
         // Calculate displacement using mirrored noise position
@@ -257,10 +261,12 @@ const cubeVertexShader = `
         float finalNoise = mix(noiseVal, angular, uY1);
         float wave = sin(noisePos.x * 12.0 + uTime) * uY2 * 0.45;
 
-        float displacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
+        float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
 
-        // Both opposite faces move in the same direction (both in or both out)
-        vDisplacement = displacement;
+        // Invert displacement for negative-facing normals so opposite faces move together
+        float displacement = baseDisplacement * normalSign;
+
+        vDisplacement = abs(displacement);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
 `;
