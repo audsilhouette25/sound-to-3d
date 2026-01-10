@@ -719,16 +719,20 @@ function animate() {
     } else if (state === 'RECORDING') {
         // During recording: Use AI prediction if trained data exists, otherwise keep sphere
         if (customTrainingData.length > 0) {
-            // Use AI prediction
-            brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
-                if (!err && results && results.length === 5) {
-                    targetY.y1 = results[0];
-                    targetY.y2 = results[1];
-                    targetY.y3 = results[2];
-                    targetY.y4 = results[3];
-                    targetY.shape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
-                }
-            });
+            // Use AI prediction every 5 frames to reduce load
+            predictionFrameCounter++;
+            if (predictionFrameCounter >= PREDICTION_INTERVAL) {
+                predictionFrameCounter = 0;
+                brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
+                    if (!err && results && results.length === 5) {
+                        targetY.y1 = results[0];
+                        targetY.y2 = results[1];
+                        targetY.y3 = results[2];
+                        targetY.y4 = results[3];
+                        targetY.shape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
+                    }
+                });
+            }
         } else {
             // No training data: Keep sphere shape and use rule-based parameters
             targetY.shape = 0;
@@ -741,16 +745,20 @@ function animate() {
     } else if (state === 'IDLE') {
         // IDLE state: Use AI prediction if trained data exists, otherwise keep sphere
         if (customTrainingData.length > 0) {
-            // Use AI prediction
-            brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
-                if (!err && results && results.length === 5) {
-                    targetY.y1 = results[0];
-                    targetY.y2 = results[1];
-                    targetY.y3 = results[2];
-                    targetY.y4 = results[3];
-                    targetY.shape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
-                }
-            });
+            // Use AI prediction every 5 frames to reduce load
+            predictionFrameCounter++;
+            if (predictionFrameCounter >= PREDICTION_INTERVAL) {
+                predictionFrameCounter = 0;
+                brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
+                    if (!err && results && results.length === 5) {
+                        targetY.y1 = results[0];
+                        targetY.y2 = results[1];
+                        targetY.y3 = results[2];
+                        targetY.y4 = results[3];
+                        targetY.shape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
+                    }
+                });
+            }
         } else {
             // No training data: Keep sphere shape and use rule-based parameters
             targetY.shape = 0;
