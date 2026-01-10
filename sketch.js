@@ -466,6 +466,7 @@ function saveRecording() {
         recordedX.roughness /= recordedX.count;
 
         // Auto-classify shape based on recorded audio features
+        console.log('📝 Recorded audio features:', recordedX);
         const autoShape = autoClassifyShape(
             recordedX.loudness,
             recordedX.pitch,
@@ -477,11 +478,7 @@ function saveRecording() {
         const shapeSelector = document.getElementById('shape-selector');
         if (shapeSelector) {
             shapeSelector.value = autoShape;
-            targetY.shape = autoShape;
-            currentY.shape = autoShape;
-            previousShape = -1; // Force shape update
-            createShape(autoShape);
-            updateShapeNameDisplay();
+            console.log('✏️ Set shape selector value to:', autoShape);
         }
 
         console.log('🎯 Auto-classified shape for recording:', SHAPE_NAMES[autoShape]);
@@ -680,16 +677,17 @@ function animate() {
         targetY.y3 = suggestedParams.y3;
         targetY.y4 = suggestedParams.y4;
     } else if (state === 'IDLE') {
-        // IDLE state: Keep sphere shape, use default parameters
+        // IDLE state: Keep sphere shape, use rule-based parameters like RECORDING
         if (currentY.shape !== 0) {
             currentY.shape = 0;
             targetY.shape = 0;
             createShape(0);
         }
-        targetY.y1 = 0.5;
-        targetY.y2 = 0.5;
-        targetY.y3 = 0.5;
-        targetY.y4 = 0.5;
+        const suggestedParams = autoSuggestParameters(currentX);
+        targetY.y1 = suggestedParams.y1;
+        targetY.y2 = suggestedParams.y2;
+        targetY.y3 = suggestedParams.y3;
+        targetY.y4 = suggestedParams.y4;
     }
 
     // 시각화 수치 부드럽게 전이 (리뷰 모드에서는 더 빠르게)
