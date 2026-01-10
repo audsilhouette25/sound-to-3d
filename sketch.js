@@ -79,6 +79,11 @@ let shaderUniforms = {
 };
 
 // Audio normalization constants
+const LOUDNESS_NORMALIZER = 2.0;
+const PITCH_NORMALIZER = 1000.0;
+const BRIGHTNESS_NORMALIZER = 10000.0;
+const ROUGHNESS_NORMALIZER = 1.0;
+
 const AUDIO_CONSTANTS = {
     LOUDNESS_NORMALIZER: 2.0
 };
@@ -163,6 +168,30 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
 
     console.log(`✅ Selected: ${SHAPE_NAMES[bestShape]} (score: ${maxScore.toFixed(3)})`);
     return bestShape;
+}
+
+// Auto-suggest visual parameters based on audio features (from 0109수정(화인))
+function autoSuggestParameters(audioFeatures) {
+    // Normalize audio features
+    const loud = Math.min(audioFeatures.loudness / LOUDNESS_NORMALIZER, 1.0);
+    const pitch = Math.min(audioFeatures.pitch / PITCH_NORMALIZER, 1.0);
+    const bright = Math.min(audioFeatures.brightness / BRIGHTNESS_NORMALIZER, 1.0);
+    const rough = Math.min(audioFeatures.roughness / ROUGHNESS_NORMALIZER, 1.0);
+
+    // Map audio features to visual parameters
+    // y1: Angularity (higher pitch = more angular)
+    const y1 = pitch * 0.6 + bright * 0.4;
+
+    // y2: Spikiness (higher brightness + roughness = more spiky)
+    const y2 = bright * 0.5 + rough * 0.5;
+
+    // y3: Texture roughness (directly from audio roughness)
+    const y3 = rough * 0.7 + (1 - loud) * 0.3;
+
+    // y4: Density/Complexity (higher brightness + loudness = more complex)
+    const y4 = bright * 0.5 + loud * 0.5;
+
+    return { y1, y2, y3, y4 };
 }
 
 // --- 3D Initialization ---
@@ -639,8 +668,19 @@ function animate() {
         targetY.y3 = parseFloat(document.getElementById('y3').value);
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
-    } else if (brain) {
-        // AI 예측 모드 (brain이 있으면 항상 예측)
+    } else if (state === 'RECORDING') {
+        // During recording, keep sphere shape and use rule-based parameters
+        if (currentY.shape !== 0) {
+            currentY.shape = 0;
+            createShape(0);
+        }
+        const suggestedParams = autoSuggestParameters(currentX);
+        targetY.y1 = suggestedParams.y1;
+        targetY.y2 = suggestedParams.y2;
+        targetY.y3 = suggestedParams.y3;
+        targetY.y4 = suggestedParams.y4;
+    } else if (customTrainingData.length >= 3) {
+        // AI prediction mode (when training data exists)
         // Throttle: 5프레임마다 1번만 실행
         predictionFrameCounter++;
         if (predictionFrameCounter >= PREDICTION_INTERVAL) {
@@ -678,6 +718,18 @@ function animate() {
                 if (!isNaN(shape)) targetY.shape = shape;
             });
         }
+    } else {
+        // Rule-based auto-classification mode (when no training data)
+        const suggestedShape = autoClassifyShape(currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness);
+        if (suggestedShape !== Math.round(currentY.shape)) {
+            targetY.shape = suggestedShape;
+        }
+
+        const suggestedParams = autoSuggestParameters(currentX);
+        targetY.y1 = suggestedParams.y1;
+        targetY.y2 = suggestedParams.y2;
+        targetY.y3 = suggestedParams.y3;
+        targetY.y4 = suggestedParams.y4;
     }
 
     // 시각화 수치 부드럽게 전이 (리뷰 모드에서는 더 빠르게)
