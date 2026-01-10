@@ -421,8 +421,8 @@ async function initEngine() {
     document.getElementById('btn-main').style.display = 'block';
     document.getElementById('btn-upload').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
-    
-    loadTrainingData();
+
+    await loadTrainingData();
     initThree();
     updateAllUIText();
     updateStatus(translations[currentLang].statusReady, 'status-idle');
