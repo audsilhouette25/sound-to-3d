@@ -684,7 +684,7 @@ function createShape(type) {
 
     const mat = new THREE.ShaderMaterial({
         uniforms: appState.visuals.uniforms,
-        vertexShader: type === 1 ? cubeVertexShader : vertexShader,
+        vertexShader,  // Use same shader for all shapes including Cube
         fragmentShader,
         wireframe: true,
         transparent: true
