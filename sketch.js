@@ -837,6 +837,10 @@ function saveRecording() {
             performAIPrediction(blendedFeatures, (prediction) => {
                 if (prediction) {
                     appState.ui.elements.shapeSelector.value = prediction.shape;
+                    appState.visuals.target.shape = prediction.shape;
+                    appState.visuals.current.shape = prediction.shape;
+                    appState.visuals.previousShape = -1;
+                    createShape(prediction.shape);
                     console.log('🤖 AI predicted shape:', SHAPE_NAMES[prediction.shape]);
                     updateShapeNameDisplay();
                 }
@@ -844,6 +848,10 @@ function saveRecording() {
         } else {
             const autoShape = autoClassifyShape(blendedFeatures);
             appState.ui.elements.shapeSelector.value = autoShape;
+            appState.visuals.target.shape = autoShape;
+            appState.visuals.current.shape = autoShape;
+            appState.visuals.previousShape = -1;
+            createShape(autoShape);
             console.log('✏️ Rule-based shape:', SHAPE_NAMES[autoShape]);
             updateShapeNameDisplay();
         }
