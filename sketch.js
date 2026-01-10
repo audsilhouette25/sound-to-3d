@@ -311,18 +311,41 @@ function confirmTrainingWrapper() {
     });
 }
 
-function saveTrainingData() { localStorage.setItem('soundTo3D_data', JSON.stringify({ data: customTrainingData })); }
+function saveTrainingData() {
+    try {
+        const dataToSave = JSON.stringify({ data: customTrainingData });
+        localStorage.setItem('soundTo3D_data', dataToSave);
+        console.log('Training data saved:', customTrainingData.length, 'samples');
+    } catch (e) {
+        console.error('Failed to save training data:', e);
+        alert('Failed to save data: ' + e.message);
+    }
+}
 function loadTrainingData() {
     const saved = localStorage.getItem('soundTo3D_data');
-    if (!saved) return;
+    if (!saved) {
+        console.log('No saved training data found');
+        return;
+    }
     try {
-        const obj = JSON.parse(saved); customTrainingData = obj.data || [];
-        const dc = document.getElementById('data-count'); if(dc) dc.innerText = customTrainingData.length;
+        const obj = JSON.parse(saved);
+        customTrainingData = obj.data || [];
+        console.log('Training data loaded:', customTrainingData.length, 'samples');
+
+        const dc = document.getElementById('data-count');
+        if (dc) dc.innerText = customTrainingData.length;
+
         if (brain && customTrainingData.length > 0) {
             customTrainingData.forEach(i => brain.addData([i.x.loudness, i.x.pitch, i.x.brightness, i.x.roughness], i.y));
-            brain.normalizeData(); brain.train({ epochs: 10 });
+            brain.normalizeData();
+            brain.train({ epochs: 10 }, () => {
+                console.log('Model trained with loaded data');
+            });
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error('Failed to load training data:', e);
+        alert('Failed to load data: ' + e.message);
+    }
 }
 
 function clearAllData() {
