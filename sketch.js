@@ -691,28 +691,56 @@ function animate() {
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
     } else if (state === 'RECORDING') {
-        // During recording, keep sphere shape and use rule-based parameters
-        if (currentY.shape !== 0) {
-            currentY.shape = 0;
-            createShape(0);
+        // During recording: Use AI prediction if trained data exists, otherwise use rule-based
+        if (customTrainingData.length > 0) {
+            // Use AI prediction
+            brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
+                if (!err && results && results.length === 5) {
+                    targetY.y1 = results[0];
+                    targetY.y2 = results[1];
+                    targetY.y3 = results[2];
+                    targetY.y4 = results[3];
+                    targetY.shape = Math.round(results[4] * 5);
+                }
+            });
+        } else {
+            // No training data: Keep sphere shape and use rule-based parameters
+            if (currentY.shape !== 0) {
+                currentY.shape = 0;
+                createShape(0);
+            }
+            const suggestedParams = autoSuggestParameters(currentX);
+            targetY.y1 = suggestedParams.y1;
+            targetY.y2 = suggestedParams.y2;
+            targetY.y3 = suggestedParams.y3;
+            targetY.y4 = suggestedParams.y4;
         }
-        const suggestedParams = autoSuggestParameters(currentX);
-        targetY.y1 = suggestedParams.y1;
-        targetY.y2 = suggestedParams.y2;
-        targetY.y3 = suggestedParams.y3;
-        targetY.y4 = suggestedParams.y4;
     } else if (state === 'IDLE') {
-        // IDLE state: Keep sphere shape, use rule-based parameters like RECORDING
-        if (currentY.shape !== 0) {
-            currentY.shape = 0;
-            targetY.shape = 0;
-            createShape(0);
+        // IDLE state: Use AI prediction if trained data exists, otherwise keep sphere with rule-based params
+        if (customTrainingData.length > 0) {
+            // Use AI prediction
+            brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
+                if (!err && results && results.length === 5) {
+                    targetY.y1 = results[0];
+                    targetY.y2 = results[1];
+                    targetY.y3 = results[2];
+                    targetY.y4 = results[3];
+                    targetY.shape = Math.round(results[4] * 5);
+                }
+            });
+        } else {
+            // No training data: Keep sphere shape and use rule-based parameters
+            if (currentY.shape !== 0) {
+                currentY.shape = 0;
+                targetY.shape = 0;
+                createShape(0);
+            }
+            const suggestedParams = autoSuggestParameters(currentX);
+            targetY.y1 = suggestedParams.y1;
+            targetY.y2 = suggestedParams.y2;
+            targetY.y3 = suggestedParams.y3;
+            targetY.y4 = suggestedParams.y4;
         }
-        const suggestedParams = autoSuggestParameters(currentX);
-        targetY.y1 = suggestedParams.y1;
-        targetY.y2 = suggestedParams.y2;
-        targetY.y3 = suggestedParams.y3;
-        targetY.y4 = suggestedParams.y4;
     }
 
     // 시각화 수치 부드럽게 전이 (리뷰 모드에서는 더 빠르게)
