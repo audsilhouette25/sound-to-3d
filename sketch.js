@@ -237,36 +237,34 @@ const cubeVertexShader = `
         vNormal = normal;
         vec3 pos = position;
 
-        // Mirror position to create symmetrical patterns on opposite faces
+        // Calculate noise - use absolute position ONLY for positive-facing normals
+        // Negative-facing normals get the mirrored result automatically
         vec3 noisePos = pos;
-        float normalSign = 1.0;
+        float shouldMirror = 0.0;
 
-        if (abs(normal.x) > 0.9) {
-            // Left/Right faces - mirror on x-axis
-            noisePos.x = abs(pos.x);
-            normalSign = sign(normal.x);
-        } else if (abs(normal.y) > 0.9) {
-            // Top/Bottom faces - mirror on y-axis
-            noisePos.y = abs(pos.y);
-            normalSign = sign(normal.y);
-        } else if (abs(normal.z) > 0.9) {
-            // Front/Back faces - mirror on z-axis
-            noisePos.z = abs(pos.z);
-            normalSign = sign(normal.z);
+        if (abs(normal.x) > 0.9 && normal.x < 0.0) {
+            // Negative x face - mirror to positive side
+            noisePos.x = -pos.x;
+            shouldMirror = 1.0;
+        } else if (abs(normal.y) > 0.9 && normal.y < 0.0) {
+            // Negative y face - mirror to positive side
+            noisePos.y = -pos.y;
+            shouldMirror = 1.0;
+        } else if (abs(normal.z) > 0.9 && normal.z < 0.0) {
+            // Negative z face - mirror to positive side
+            noisePos.z = -pos.z;
+            shouldMirror = 1.0;
         }
 
-        // Calculate displacement using mirrored noise position
+        // Calculate displacement
         float noiseVal = noise(noisePos * (2.0 + uY4 * 8.0) + uTime * 0.4);
         float angular = floor(noiseVal * (1.0 + (1.0-uY1)*12.0)) / (1.0 + (1.0-uY1)*12.0);
         float finalNoise = mix(noiseVal, angular, uY1);
         float wave = sin(noisePos.x * 12.0 + uTime) * uY2 * 0.45;
 
-        float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
+        float displacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
 
-        // Invert displacement for negative-facing normals so opposite faces move together
-        float displacement = baseDisplacement * normalSign;
-
-        vDisplacement = abs(displacement);
+        vDisplacement = displacement;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
 `;
