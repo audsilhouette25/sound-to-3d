@@ -761,7 +761,12 @@ async function handleRecord() {
             pitch: 0,
             brightness: 0,
             roughness: 0,
-            count: 0
+            count: 0,
+            // Track peak values for more distinctive shape classification
+            peakLoudness: 0,
+            peakPitch: 0,
+            peakBrightness: 0,
+            peakRoughness: 0
         };
 
         if (appState.audio.audioTag) {
@@ -850,12 +855,20 @@ function saveRecording() {
         appState.audio.recorded.brightness /= appState.audio.recorded.count;
         appState.audio.recorded.roughness /= appState.audio.recorded.count;
 
+        // Blend average (30%) with peak (70%) for distinctive shape classification
+        const blendedFeatures = {
+            loudness: appState.audio.recorded.loudness * 0.3 + appState.audio.recorded.peakLoudness * 0.7,
+            pitch: appState.audio.recorded.pitch * 0.3 + appState.audio.recorded.peakPitch * 0.7,
+            brightness: appState.audio.recorded.brightness * 0.3 + appState.audio.recorded.peakBrightness * 0.7,
+            roughness: appState.audio.recorded.roughness * 0.3 + appState.audio.recorded.peakRoughness * 0.7
+        };
+
         console.log('📝 Recorded audio features:', appState.audio.recorded);
-        console.log('🔢 Audio features:', appState.audio.recorded, 'normalized:', normalizeAudioFeatures(appState.audio.recorded));
+        console.log('🔢 Blended features (avg 30% + peak 70%):', blendedFeatures, 'normalized:', normalizeAudioFeatures(blendedFeatures));
 
         // Predict or classify shape
         if (appState.ml.trainingData.length > 0) {
-            performAIPrediction(appState.audio.recorded, (prediction) => {
+            performAIPrediction(blendedFeatures, (prediction) => {
                 if (prediction) {
                     appState.ui.elements.shapeSelector.value = prediction.shape;
                     console.log('🤖 AI predicted shape:', SHAPE_NAMES[prediction.shape]);
@@ -863,7 +876,7 @@ function saveRecording() {
                 }
             });
         } else {
-            const autoShape = autoClassifyShape(appState.audio.recorded);
+            const autoShape = autoClassifyShape(blendedFeatures);
             appState.ui.elements.shapeSelector.value = autoShape;
             console.log('✏️ Rule-based shape:', SHAPE_NAMES[autoShape]);
             updateShapeNameDisplay();
@@ -909,7 +922,12 @@ async function handleFileUpload(event) {
             pitch: 0,
             brightness: 0,
             roughness: 0,
-            count: 0
+            count: 0,
+            // Track peak values for more distinctive shape classification
+            peakLoudness: 0,
+            peakPitch: 0,
+            peakBrightness: 0,
+            peakRoughness: 0
         };
 
         // Create source node and analyze
@@ -938,6 +956,12 @@ async function handleFileUpload(event) {
             appState.audio.recorded.roughness += features.roughness;
             appState.audio.recorded.count++;
 
+            // Track peak values
+            appState.audio.recorded.peakLoudness = Math.max(appState.audio.recorded.peakLoudness, features.loudness);
+            appState.audio.recorded.peakPitch = Math.max(appState.audio.recorded.peakPitch, features.pitch);
+            appState.audio.recorded.peakBrightness = Math.max(appState.audio.recorded.peakBrightness, features.brightness);
+            appState.audio.recorded.peakRoughness = Math.max(appState.audio.recorded.peakRoughness, features.roughness);
+
             analyzeCount++;
             if (analyzeCount >= maxCount) {
                 clearInterval(analyzeTimer);
@@ -949,10 +973,18 @@ async function handleFileUpload(event) {
                     appState.audio.recorded.roughness /= appState.audio.recorded.count;
                 }
 
-                console.log('File analysis complete:', appState.audio.recorded);
-                console.log('🔢 Audio features:', appState.audio.recorded, 'normalized:', normalizeAudioFeatures(appState.audio.recorded));
+                // Blend average (30%) with peak (70%) for distinctive shape classification
+                const blendedFeatures = {
+                    loudness: appState.audio.recorded.loudness * 0.3 + appState.audio.recorded.peakLoudness * 0.7,
+                    pitch: appState.audio.recorded.pitch * 0.3 + appState.audio.recorded.peakPitch * 0.7,
+                    brightness: appState.audio.recorded.brightness * 0.3 + appState.audio.recorded.peakBrightness * 0.7,
+                    roughness: appState.audio.recorded.roughness * 0.3 + appState.audio.recorded.peakRoughness * 0.7
+                };
 
-                const autoShape = autoClassifyShape(appState.audio.recorded);
+                console.log('File analysis complete:', appState.audio.recorded);
+                console.log('🔢 Blended features (avg 30% + peak 70%):', blendedFeatures, 'normalized:', normalizeAudioFeatures(blendedFeatures));
+
+                const autoShape = autoClassifyShape(blendedFeatures);
                 appState.ui.elements.shapeSelector.value = autoShape;
                 appState.visuals.target.shape = autoShape;
                 appState.visuals.current.shape = autoShape;
@@ -1079,6 +1111,12 @@ function analyzeAudio() {
             appState.audio.recorded.brightness += features.brightness;
             appState.audio.recorded.roughness += features.roughness;
             appState.audio.recorded.count++;
+
+            // Track peak values for distinctive moments
+            appState.audio.recorded.peakLoudness = Math.max(appState.audio.recorded.peakLoudness, features.loudness);
+            appState.audio.recorded.peakPitch = Math.max(appState.audio.recorded.peakPitch, features.pitch);
+            appState.audio.recorded.peakBrightness = Math.max(appState.audio.recorded.peakBrightness, features.brightness);
+            appState.audio.recorded.peakRoughness = Math.max(appState.audio.recorded.peakRoughness, features.roughness);
         }
     }
 
