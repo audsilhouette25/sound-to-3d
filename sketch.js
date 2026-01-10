@@ -876,7 +876,7 @@ function confirmTrainingWrapper() {
 
     setTimeout(() => {
         console.log('🎓 Starting training in background...');
-        brain.train({ epochs: 20 }, () => {
+        brain.train({ epochs: 50 }, () => {
             isBrainTrained = true;
             console.log('✅ Training complete! AI mode enabled.');
         });
