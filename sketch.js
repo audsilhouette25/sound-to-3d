@@ -1,39 +1,175 @@
-let audioCtx, analyser, microphone, mediaRecorder, sourceNode;
-let audioChunks = [];
-let audioTag = null;
-let brain;
-let scene, camera, renderer, currentMesh;
-let state = 'IDLE';
-let isPlaying = false;
-let recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
-let currentX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
-let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
-let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
-let customTrainingData = [];
-let currentLang = 'KR';
-let micStream = null;
-let isBrainTrained = false; // Track if brain has been trained
+// ==================================================================
+// Sound-to-3D Visualization with ML
+// Refactored for better code quality, performance, and maintainability
+// ==================================================================
 
-// API Configuration
+// --- Constants ---
 const API_URL = 'https://sound-to-3d-server.onrender.com';
 const USE_SERVER = true; // Server enabled - data syncs across all browsers
 
-// Rendering optimization variables (from main branch)
-let predictionFrameCounter = 0;
-let activePredictionId = 0;
-const PREDICTION_INTERVAL = 5; // 5프레임마다 1번 예측 (60fps → 12 predictions/sec)
-let previousShape = -1;
+const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron'];
 
-const RENDER_CONSTANTS = {
+const CONSTANTS = {
+    // Audio normalization
+    LOUDNESS_NORMALIZER: 2.0,
+    PITCH_NORMALIZER: 20.0,
+    BRIGHTNESS_NORMALIZER: 24.0,
+    ROUGHNESS_NORMALIZER: 1.0,
+
+    // Rendering
     CAMERA_FOV: 75,
     CAMERA_NEAR: 0.1,
     CAMERA_FAR: 1000,
     CAMERA_DISTANCE: 3.5,
     LERP_SPEED_REVIEWING: 0.3,
-    LERP_SPEED_LIVE: 0.1
+    LERP_SPEED_LIVE: 0.1,
+    LERP_THRESHOLD: 0.001, // Skip LERP if delta below this
+    SHAPE_CHANGE_THRESHOLD: 0.1,
+
+    // Prediction optimization
+    PREDICTION_INTERVAL: 5, // 5 frames per prediction
+
+    // Audio recording
+    SAMPLE_RATE: 48000,
+    AUDIO_BITS_PER_SECOND: 128000,
+    RECORDER_TIMESLICE: 100,
+
+    // Audio analysis
+    FFT_SIZE: 2048,
+    PITCH_DIVISOR: 50.0,
+    BRIGHTNESS_MULTIPLIER: 1.2,
+    ROUGHNESS_DIVISOR: 40.0,
+    LOUDNESS_MULTIPLIER: 10.0,
+
+    // File upload analysis
+    ANALYZE_DURATION: 3000, // ms
+    ANALYZE_INTERVAL: 50, // ms
+
+    // DOM update throttling
+    DOM_UPDATE_INTERVAL: 100, // ms
+    DOM_UPDATE_THRESHOLD: 0.01, // Only update if change > 1%
+
+    // Training
+    TRAINING_EPOCHS: 50,
+    TRAINING_DELAY: 500, // ms
+    RELOAD_DELAY: 500, // ms
+
+    // Mesh subdivision
+    CUBE_SUBDIVISIONS: 32,
+
+    // Shader timing
+    TIME_INCREMENT: 0.05,
+    ROTATION_SPEED: 0.005
 };
 
-// --- GPU Shader Code (Fixed Noise Function) ---
+// --- Application State (Consolidated) ---
+const appState = {
+    audio: {
+        ctx: null,
+        analyser: null,
+        microphone: null,
+        stream: null,
+        recorder: null,
+        sourceNode: null,
+        audioTag: null,
+        chunks: [],
+        isPlaying: false,
+        // Current audio features (real-time)
+        features: {
+            loudness: 0,
+            pitch: 0,
+            brightness: 0,
+            roughness: 0
+        },
+        // Recorded audio features (accumulated during recording)
+        recorded: {
+            loudness: 0,
+            pitch: 0,
+            brightness: 0,
+            roughness: 0,
+            count: 0
+        }
+    },
+    visuals: {
+        scene: null,
+        camera: null,
+        renderer: null,
+        mesh: null,
+        // Current visual state (interpolated)
+        current: {
+            y1: 0.5,
+            y2: 0.5,
+            y3: 0.5,
+            y4: 0.5,
+            shape: 0
+        },
+        // Target visual state
+        target: {
+            y1: 0.5,
+            y2: 0.5,
+            y3: 0.5,
+            y4: 0.5,
+            shape: 0
+        },
+        uniforms: {
+            uTime: { value: 0 },
+            uLoudness: { value: 0 },
+            uY1: { value: 0.5 },
+            uY2: { value: 0.5 },
+            uY3: { value: 0.5 },
+            uY4: { value: 0.5 }
+        },
+        previousShape: -1,
+        predictionFrameCounter: 0
+    },
+    ml: {
+        brain: null,
+        isTrained: false,
+        trainingData: []
+    },
+    ui: {
+        state: 'IDLE', // 'IDLE', 'RECORDING', 'REVIEWING'
+        lang: 'KR',
+        // Cached DOM elements
+        elements: {
+            btnMain: null,
+            btnPlay: null,
+            btnConfirm: null,
+            btnUpload: null,
+            btnEngine: null,
+            y1: null,
+            y2: null,
+            y3: null,
+            y4: null,
+            shapeSelector: null,
+            valLoud: null,
+            valPitch: null,
+            valBright: null,
+            valRough: null,
+            dataCount: null,
+            labelingZone: null,
+            saveLoadZone: null,
+            status: null,
+            trainingOverlay: null,
+            trainingMessage: null,
+            trainingProgress: null
+        },
+        lastDOMUpdate: 0,
+        lastAudioDisplayUpdate: 0,
+        lastAudioValues: {
+            loudness: 0,
+            pitch: 0,
+            brightness: 0,
+            roughness: 0
+        }
+    },
+    resources: {
+        objectURLs: [],
+        listeners: []
+    }
+};
+
+// --- GPU Shader Code ---
 const vertexShader = `
     varying float vDisplacement;
     varying vec3 vNormal;
@@ -46,7 +182,6 @@ const vertexShader = `
         vec3 p = floor(x); vec3 f = fract(x);
         f = f*f*(3.0-2.0*f);
         float n = p.x + p.y*57.0 + 113.0*p.z;
-        // Fixed: Corrected 3D noise mix logic
         return mix(
             mix(mix(hash(n+0.0), hash(n+1.0), f.x), mix(hash(n+57.0), hash(n+58.0), f.x), f.y),
             mix(mix(hash(n+113.0), hash(n+114.0), f.x), mix(hash(n+170.0), hash(n+171.0), f.x), f.y),
@@ -78,90 +213,114 @@ const fragmentShader = `
     }
 `;
 
-let shaderUniforms = {
-    uTime: { value: 0 }, uLoudness: { value: 0 },
-    uY1: { value: 0.5 }, uY2: { value: 0.5 }, uY3: { value: 0.5 }, uY4: { value: 0.5 }
-};
+// --- Utility Functions ---
 
-// Audio normalization constants
-const LOUDNESS_NORMALIZER = 2.0;
-const PITCH_NORMALIZER = 20.0;  // pitch is already divided by 50, max ~20
-const BRIGHTNESS_NORMALIZER = 24.0;  // brightness = pitch * 1.2, max ~24
-const ROUGHNESS_NORMALIZER = 1.0;
+/**
+ * Calculate audio features from frequency and time domain data
+ */
+function calculateAudioFeatures(frequencyData, timeDomainData) {
+    // Loudness calculation
+    let sum = 0;
+    for (let v of timeDomainData) {
+        let n = (v - 128) / 128;
+        sum += n * n;
+    }
+    const loudness = Math.sqrt(sum / timeDomainData.length) * CONSTANTS.LOUDNESS_MULTIPLIER;
 
-const AUDIO_CONSTANTS = {
-    LOUDNESS_NORMALIZER: 2.0
-};
+    // Pitch calculation (spectral centroid)
+    let totalEnergy = 0;
+    let weightedEnergy = 0;
+    for (let i = 0; i < frequencyData.length; i++) {
+        weightedEnergy += i * frequencyData[i];
+        totalEnergy += frequencyData[i];
+    }
+    const pitch = totalEnergy > 0 ? (weightedEnergy / totalEnergy) / CONSTANTS.PITCH_DIVISOR : 0;
+    const brightness = pitch * CONSTANTS.BRIGHTNESS_MULTIPLIER;
 
-const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron'];
+    // Roughness calculation (zero-crossing rate)
+    let zcr = 0;
+    for (let i = 1; i < timeDomainData.length; i++) {
+        if (timeDomainData[i] > 128 && timeDomainData[i - 1] <= 128) zcr++;
+    }
+    const roughness = zcr / CONSTANTS.ROUGHNESS_DIVISOR;
 
-// Auto-classify shape based on audio features (from main branch)
-function autoClassifyShape(loudness, pitch, brightness, roughness) {
-    // Input validation
-    if (typeof loudness !== 'number' || isNaN(loudness) ||
-        typeof pitch !== 'number' || isNaN(pitch) ||
-        typeof brightness !== 'number' || isNaN(brightness) ||
-        typeof roughness !== 'number' || isNaN(roughness)) {
-        console.error('Invalid input to autoClassifyShape:', { loudness, pitch, brightness, roughness });
+    return { loudness, pitch, brightness, roughness };
+}
+
+/**
+ * Normalize audio features to 0-1 range
+ */
+function normalizeAudioFeatures(features) {
+    return {
+        loudness: Math.min(1, Math.max(0, features.loudness / CONSTANTS.LOUDNESS_NORMALIZER)),
+        pitch: Math.min(1, Math.max(0, features.pitch / CONSTANTS.PITCH_NORMALIZER)),
+        brightness: Math.min(1, Math.max(0, features.brightness / CONSTANTS.BRIGHTNESS_NORMALIZER)),
+        roughness: Math.min(1, Math.max(0, features.roughness / CONSTANTS.ROUGHNESS_NORMALIZER))
+    };
+}
+
+/**
+ * Validate input features
+ */
+function validateAudioFeatures(features) {
+    return typeof features.loudness === 'number' && !isNaN(features.loudness) &&
+           typeof features.pitch === 'number' && !isNaN(features.pitch) &&
+           typeof features.brightness === 'number' && !isNaN(features.brightness) &&
+           typeof features.roughness === 'number' && !isNaN(features.roughness);
+}
+
+/**
+ * Auto-classify shape based on audio features (rule-based)
+ */
+function autoClassifyShape(features) {
+    if (!validateAudioFeatures(features)) {
+        console.error('Invalid input to autoClassifyShape:', features);
         return 0; // Default to sphere
     }
 
-    // Normalize values (0-1 range)
-    const normalizedLoudness = Math.min(1, Math.max(0, loudness / LOUDNESS_NORMALIZER));
-    const normalizedPitch = Math.min(1, Math.max(0, pitch / PITCH_NORMALIZER));
-    const normalizedBrightness = Math.min(1, Math.max(0, brightness / BRIGHTNESS_NORMALIZER));
-    const normalizedRoughness = Math.min(1, Math.max(0, roughness / ROUGHNESS_NORMALIZER));
+    const normalized = normalizeAudioFeatures(features);
 
     console.log('🎵 Audio features:', {
-        loudness: loudness.toFixed(3),
-        pitch: pitch.toFixed(3),
-        brightness: brightness.toFixed(3),
-        roughness: roughness.toFixed(3),
+        loudness: features.loudness.toFixed(3),
+        pitch: features.pitch.toFixed(3),
+        brightness: features.brightness.toFixed(3),
+        roughness: features.roughness.toFixed(3),
         normalized: {
-            loudness: normalizedLoudness.toFixed(3),
-            pitch: normalizedPitch.toFixed(3),
-            brightness: normalizedBrightness.toFixed(3),
-            roughness: normalizedRoughness.toFixed(3)
+            loudness: normalized.loudness.toFixed(3),
+            pitch: normalized.pitch.toFixed(3),
+            brightness: normalized.brightness.toFixed(3),
+            roughness: normalized.roughness.toFixed(3)
         }
     });
 
-    // Classification logic:
-    // - Sphere (0): smooth, uniform sound (low roughness, medium pitch)
-    // - Cube (1): angular, clear sound (high brightness, medium roughness)
-    // - Torus (2): rotating feel (medium-high pitch, varying)
-    // - Cone (3): sharp, pointed sound (high pitch, high brightness)
-    // - Cylinder (4): consistent, continuous sound (low roughness, steady pitch)
-    // - Octahedron (5): complex, irregular sound (high roughness, lots of variation)
-
     const scores = [0, 0, 0, 0, 0, 0];
 
-    // Sphere: smooth and low-mid pitch (default safe choice)
-    scores[0] = (1 - normalizedRoughness) * 0.5 +
-                (normalizedPitch > 0.1 && normalizedPitch < 0.4 ? 0.5 : 0.1);
+    // Sphere: smooth and low-mid pitch
+    scores[0] = (1 - normalized.roughness) * 0.5 +
+                (normalized.pitch > 0.1 && normalized.pitch < 0.4 ? 0.5 : 0.1);
 
     // Cube: bright with moderate roughness
-    scores[1] = (normalizedBrightness > 0.3 ? normalizedBrightness * 0.6 : 0) +
-                (normalizedRoughness > 0.3 && normalizedRoughness < 0.7 ? 0.4 : 0);
+    scores[1] = (normalized.brightness > 0.3 ? normalized.brightness * 0.6 : 0) +
+                (normalized.roughness > 0.3 && normalized.roughness < 0.7 ? 0.4 : 0);
 
     // Torus: medium-high pitch with good loudness
-    scores[2] = (normalizedPitch > 0.4 && normalizedPitch < 0.8 ? 0.5 : 0) +
-                (normalizedLoudness > 0.2 ? normalizedLoudness * 0.5 : 0);
+    scores[2] = (normalized.pitch > 0.4 && normalized.pitch < 0.8 ? 0.5 : 0) +
+                (normalized.loudness > 0.2 ? normalized.loudness * 0.5 : 0);
 
-    // Cone: very high and sharp (strict conditions)
-    scores[3] = (normalizedPitch > 0.7 ? normalizedPitch * 0.6 : 0) +
-                (normalizedBrightness > 0.7 ? normalizedBrightness * 0.4 : 0);
+    // Cone: very high and sharp
+    scores[3] = (normalized.pitch > 0.7 ? normalized.pitch * 0.6 : 0) +
+                (normalized.brightness > 0.7 ? normalized.brightness * 0.4 : 0);
 
-    // Cylinder: very smooth with high loudness (stricter)
-    scores[4] = (normalizedRoughness < 0.3 ? (1 - normalizedRoughness) * 0.5 : 0) +
-                (normalizedLoudness > 0.5 ? normalizedLoudness * 0.5 : 0);
+    // Cylinder: very smooth with high loudness
+    scores[4] = (normalized.roughness < 0.3 ? (1 - normalized.roughness) * 0.5 : 0) +
+                (normalized.loudness > 0.5 ? normalized.loudness * 0.5 : 0);
 
     // Octahedron: complex and rough
-    scores[5] = (normalizedRoughness > 0.5 ? normalizedRoughness * 0.7 : 0) +
-                (normalizedBrightness * 0.3);
+    scores[5] = (normalized.roughness > 0.5 ? normalized.roughness * 0.7 : 0) +
+                (normalized.brightness * 0.3);
 
-    console.log(' Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
+    console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
 
-    // Return shape with highest score
     let maxScore = -1;
     let bestShape = 0;
     for (let i = 0; i < 6; i++) {
@@ -171,81 +330,224 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
         }
     }
 
-    console.log(`Selected: ${SHAPE_NAMES[bestShape]} (score: ${maxScore.toFixed(3)})`);
+    console.log(`✅ Selected: ${SHAPE_NAMES[bestShape]} (score: ${maxScore.toFixed(3)})`);
     return bestShape;
 }
 
-// Auto-suggest visual parameters based on audio features (from 0109수정(화인))
-function autoSuggestParameters(audioFeatures) {
-    // Normalize audio features
-    const loud = Math.min(audioFeatures.loudness / LOUDNESS_NORMALIZER, 1.0);
-    const pitch = Math.min(audioFeatures.pitch / PITCH_NORMALIZER, 1.0);
-    const bright = Math.min(audioFeatures.brightness / BRIGHTNESS_NORMALIZER, 1.0);
-    const rough = Math.min(audioFeatures.roughness / ROUGHNESS_NORMALIZER, 1.0);
+/**
+ * Auto-suggest visual parameters based on audio features
+ */
+function autoSuggestParameters(features) {
+    const normalized = normalizeAudioFeatures(features);
 
-    // Map audio features to visual parameters
-    // y1: Angularity (higher pitch = more angular)
-    const y1 = pitch * 0.6 + bright * 0.4;
-
-    // y2: Spikiness (higher brightness + roughness = more spiky)
-    const y2 = bright * 0.5 + rough * 0.5;
-
-    // y3: Texture roughness (directly from audio roughness)
-    const y3 = rough * 0.7 + (1 - loud) * 0.3;
-
-    // y4: Density/Complexity (higher brightness + loudness = more complex)
-    const y4 = bright * 0.5 + loud * 0.5;
-
-    return { y1, y2, y3, y4 };
+    return {
+        y1: normalized.pitch * 0.6 + normalized.brightness * 0.4,
+        y2: normalized.brightness * 0.5 + normalized.roughness * 0.5,
+        y3: normalized.roughness * 0.7 + (1 - normalized.loudness) * 0.3,
+        y4: normalized.brightness * 0.5 + normalized.loudness * 0.5
+    };
 }
 
-// --- 3D Initialization ---
+/**
+ * Perform AI prediction (consolidated)
+ */
+function performAIPrediction(features, callback) {
+    if (!appState.ml.brain || !appState.ml.isTrained) {
+        callback(null);
+        return;
+    }
+
+    appState.ml.brain.predict(
+        [features.loudness, features.pitch, features.brightness, features.roughness],
+        (err, results) => {
+            if (err || !results || results.length !== 5) {
+                callback(null);
+                return;
+            }
+
+            callback({
+                y1: results[0],
+                y2: results[1],
+                y3: results[2],
+                y4: results[3],
+                shape: Math.min(5, Math.max(0, Math.round(results[4] * 5)))
+            });
+        }
+    );
+}
+
+/**
+ * Update target visual parameters based on current state
+ */
+function updateTargetVisuals() {
+    const { state } = appState.ui;
+    const { elements } = appState.ui;
+
+    if (state === 'REVIEWING') {
+        // REVIEWING mode: Use slider values directly
+        appState.visuals.target.y1 = parseFloat(elements.y1.value);
+        appState.visuals.target.y2 = parseFloat(elements.y2.value);
+        appState.visuals.target.y3 = parseFloat(elements.y3.value);
+        appState.visuals.target.y4 = parseFloat(elements.y4.value);
+        appState.visuals.target.shape = parseInt(elements.shapeSelector.value);
+    } else if (state === 'RECORDING' || state === 'IDLE') {
+        // Use AI prediction if trained, otherwise rule-based
+        if (appState.ml.isTrained && appState.ml.trainingData.length > 0) {
+            // Throttle predictions
+            appState.visuals.predictionFrameCounter++;
+            if (appState.visuals.predictionFrameCounter >= CONSTANTS.PREDICTION_INTERVAL) {
+                appState.visuals.predictionFrameCounter = 0;
+                performAIPrediction(appState.audio.features, (prediction) => {
+                    if (prediction) {
+                        appState.visuals.target.y1 = prediction.y1;
+                        appState.visuals.target.y2 = prediction.y2;
+                        appState.visuals.target.y3 = prediction.y3;
+                        appState.visuals.target.y4 = prediction.y4;
+                        appState.visuals.target.shape = prediction.shape;
+                    }
+                });
+            }
+        } else {
+            // Rule-based: Keep sphere and suggest parameters
+            appState.visuals.target.shape = 0;
+            const suggested = autoSuggestParameters(appState.audio.features);
+            appState.visuals.target.y1 = suggested.y1;
+            appState.visuals.target.y2 = suggested.y2;
+            appState.visuals.target.y3 = suggested.y3;
+            appState.visuals.target.y4 = suggested.y4;
+        }
+    }
+}
+
+/**
+ * Check if shape should be changed
+ */
+function shouldChangeShape() {
+    const roundedShape = Math.round(appState.visuals.current.shape);
+    const delta = Math.abs(appState.visuals.current.shape - roundedShape);
+    return delta > CONSTANTS.SHAPE_CHANGE_THRESHOLD &&
+           roundedShape !== appState.visuals.previousShape &&
+           roundedShape >= 0 && roundedShape <= 5;
+}
+
+// --- Resource Management ---
+
+/**
+ * Create and track an object URL
+ */
+function createTrackedObjectURL(blob) {
+    const url = URL.createObjectURL(blob);
+    appState.resources.objectURLs.push(url);
+    return url;
+}
+
+/**
+ * Add a tracked event listener
+ */
+function addTrackedListener(element, event, handler) {
+    element.addEventListener(event, handler);
+    appState.resources.listeners.push({ element, event, handler });
+}
+
+/**
+ * Cleanup all resources
+ */
+function cleanupResources() {
+    // Revoke all object URLs
+    appState.resources.objectURLs.forEach(url => URL.revokeObjectURL(url));
+    appState.resources.objectURLs = [];
+
+    // Remove all event listeners
+    appState.resources.listeners.forEach(({ element, event, handler }) => {
+        element.removeEventListener(event, handler);
+    });
+    appState.resources.listeners = [];
+
+    // Disconnect audio nodes
+    if (appState.audio.microphone) {
+        appState.audio.microphone.disconnect();
+        appState.audio.microphone = null;
+    }
+
+    if (appState.audio.sourceNode) {
+        appState.audio.sourceNode.disconnect();
+        appState.audio.sourceNode = null;
+    }
+
+    // Stop media stream
+    if (appState.audio.stream) {
+        appState.audio.stream.getTracks().forEach(track => track.stop());
+        appState.audio.stream = null;
+    }
+
+    // Close audio context
+    if (appState.audio.ctx && appState.audio.ctx.state !== 'closed') {
+        appState.audio.ctx.close();
+    }
+}
+
+// --- 3D Visualization ---
+
+/**
+ * Initialize Three.js scene
+ */
 function initThree() {
     console.log('initThree() called');
 
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x050505);
+    appState.visuals.scene = new THREE.Scene();
+    appState.visuals.scene.background = new THREE.Color(0x050505);
 
     const rightPanelWidth = window.innerWidth - 320;
-    camera = new THREE.PerspectiveCamera(75, rightPanelWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 3.5;
+    appState.visuals.camera = new THREE.PerspectiveCamera(
+        CONSTANTS.CAMERA_FOV,
+        rightPanelWidth / window.innerHeight,
+        CONSTANTS.CAMERA_NEAR,
+        CONSTANTS.CAMERA_FAR
+    );
+    appState.visuals.camera.position.z = CONSTANTS.CAMERA_DISTANCE;
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(rightPanelWidth, window.innerHeight);
-    renderer.domElement.style.position = 'absolute';
-    renderer.domElement.style.top = '0';
-    renderer.domElement.style.left = '320px';
-    renderer.domElement.style.zIndex = '1';
-    document.body.appendChild(renderer.domElement);
+    appState.visuals.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    appState.visuals.renderer.setSize(rightPanelWidth, window.innerHeight);
+    appState.visuals.renderer.domElement.style.position = 'absolute';
+    appState.visuals.renderer.domElement.style.top = '0';
+    appState.visuals.renderer.domElement.style.left = '320px';
+    appState.visuals.renderer.domElement.style.zIndex = '1';
+    document.body.appendChild(appState.visuals.renderer.domElement);
 
     console.log('Renderer created and appended to body');
     console.log('Canvas size:', rightPanelWidth, 'x', window.innerHeight);
 
-    window.addEventListener('resize', onWindowResize);
+    // Track window resize listener
+    const resizeHandler = onWindowResize;
+    addTrackedListener(window, 'resize', resizeHandler);
+
     createShape(0);
     console.log('Initial shape created');
     animate();
     console.log('Animation loop started');
 }
 
+/**
+ * Handle window resize
+ */
 function onWindowResize() {
     const rightPanelWidth = window.innerWidth - 320;
-    camera.aspect = rightPanelWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(rightPanelWidth, window.innerHeight);
+    appState.visuals.camera.aspect = rightPanelWidth / window.innerHeight;
+    appState.visuals.camera.updateProjectionMatrix();
+    appState.visuals.renderer.setSize(rightPanelWidth, window.innerHeight);
 }
 
+/**
+ * Create a cube with connected vertices (prevents tearing)
+ */
 function createConnectedCube(size, subdivisions) {
     const geo = new THREE.BufferGeometry();
     const half = size / 2;
     const vertices = [];
     const indices = [];
-
-    // Create a grid of vertices for each face, with shared edges
     const seg = subdivisions;
-    const vertexMap = new Map(); // To track shared vertices at edges
+    const vertexMap = new Map();
 
-    // Helper to get/create vertex index
     function getVertexIndex(x, y, z) {
         const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
         if (vertexMap.has(key)) {
@@ -257,62 +559,35 @@ function createConnectedCube(size, subdivisions) {
         return index;
     }
 
-    // Generate each face with subdivisions
-    // Front face (z = +half)
+    // Generate vertices for all faces
     for (let i = 0; i <= seg; i++) {
         for (let j = 0; j <= seg; j++) {
             const x = -half + (i / seg) * size;
             const y = -half + (j / seg) * size;
-            getVertexIndex(x, y, half);
+            getVertexIndex(x, y, half);  // Front
+            getVertexIndex(x, y, -half); // Back
         }
     }
 
-    // Back face (z = -half)
-    for (let i = 0; i <= seg; i++) {
-        for (let j = 0; j <= seg; j++) {
-            const x = -half + (i / seg) * size;
-            const y = -half + (j / seg) * size;
-            getVertexIndex(x, y, -half);
-        }
-    }
-
-    // Top face (y = +half)
     for (let i = 0; i <= seg; i++) {
         for (let k = 0; k <= seg; k++) {
             const x = -half + (i / seg) * size;
             const z = -half + (k / seg) * size;
-            getVertexIndex(x, half, z);
+            getVertexIndex(x, half, z);  // Top
+            getVertexIndex(x, -half, z); // Bottom
         }
     }
 
-    // Bottom face (y = -half)
-    for (let i = 0; i <= seg; i++) {
-        for (let k = 0; k <= seg; k++) {
-            const x = -half + (i / seg) * size;
-            const z = -half + (k / seg) * size;
-            getVertexIndex(x, -half, z);
-        }
-    }
-
-    // Right face (x = +half)
     for (let j = 0; j <= seg; j++) {
         for (let k = 0; k <= seg; k++) {
             const y = -half + (j / seg) * size;
             const z = -half + (k / seg) * size;
-            getVertexIndex(half, y, z);
+            getVertexIndex(half, y, z);  // Right
+            getVertexIndex(-half, y, z); // Left
         }
     }
 
-    // Left face (x = -half)
-    for (let j = 0; j <= seg; j++) {
-        for (let k = 0; k <= seg; k++) {
-            const y = -half + (j / seg) * size;
-            const z = -half + (k / seg) * size;
-            getVertexIndex(-half, y, z);
-        }
-    }
-
-    // Generate indices for all faces
+    // Generate indices
     function addFaceIndices(getIndex) {
         for (let i = 0; i < seg; i++) {
             for (let j = 0; j < seg; j++) {
@@ -320,54 +595,23 @@ function createConnectedCube(size, subdivisions) {
                 const b = getIndex(i + 1, j);
                 const c = getIndex(i + 1, j + 1);
                 const d = getIndex(i, j + 1);
-
                 indices.push(a, b, c);
                 indices.push(a, c, d);
             }
         }
     }
 
-    // Front face indices
-    addFaceIndices((i, j) => {
-        const x = -half + (i / seg) * size;
-        const y = -half + (j / seg) * size;
-        return vertexMap.get(`${x.toFixed(6)},${y.toFixed(6)},${half.toFixed(6)}`);
-    });
+    // Add indices for each face
+    const faceConfigs = [
+        (i, j) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${half.toFixed(6)}`), // Front
+        (i, j) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${(-half).toFixed(6)}`), // Back
+        (i, k) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${half.toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`), // Top
+        (i, k) => vertexMap.get(`${(-half + (i / seg) * size).toFixed(6)},${(-half).toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`), // Bottom
+        (j, k) => vertexMap.get(`${half.toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`), // Right
+        (j, k) => vertexMap.get(`${(-half).toFixed(6)},${(-half + (j / seg) * size).toFixed(6)},${(-half + (k / seg) * size).toFixed(6)}`) // Left
+    ];
 
-    // Back face indices
-    addFaceIndices((i, j) => {
-        const x = -half + (i / seg) * size;
-        const y = -half + (j / seg) * size;
-        return vertexMap.get(`${x.toFixed(6)},${y.toFixed(6)},${(-half).toFixed(6)}`);
-    });
-
-    // Top face indices
-    addFaceIndices((i, k) => {
-        const x = -half + (i / seg) * size;
-        const z = -half + (k / seg) * size;
-        return vertexMap.get(`${x.toFixed(6)},${half.toFixed(6)},${z.toFixed(6)}`);
-    });
-
-    // Bottom face indices
-    addFaceIndices((i, k) => {
-        const x = -half + (i / seg) * size;
-        const z = -half + (k / seg) * size;
-        return vertexMap.get(`${x.toFixed(6)},${(-half).toFixed(6)},${z.toFixed(6)}`);
-    });
-
-    // Right face indices
-    addFaceIndices((j, k) => {
-        const y = -half + (j / seg) * size;
-        const z = -half + (k / seg) * size;
-        return vertexMap.get(`${half.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`);
-    });
-
-    // Left face indices
-    addFaceIndices((j, k) => {
-        const y = -half + (j / seg) * size;
-        const z = -half + (k / seg) * size;
-        return vertexMap.get(`${(-half).toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`);
-    });
+    faceConfigs.forEach(config => addFaceIndices(config));
 
     geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     geo.setIndex(indices);
@@ -376,624 +620,707 @@ function createConnectedCube(size, subdivisions) {
     return geo;
 }
 
+/**
+ * Create 3D shape
+ */
 function createShape(type) {
-    if (currentMesh) {
-        scene.remove(currentMesh);
-        if(currentMesh.geometry) currentMesh.geometry.dispose();
-        if(currentMesh.material) currentMesh.material.dispose();
+    if (appState.visuals.mesh) {
+        appState.visuals.scene.remove(appState.visuals.mesh);
+        if (appState.visuals.mesh.geometry) appState.visuals.mesh.geometry.dispose();
+        if (appState.visuals.mesh.material) appState.visuals.mesh.material.dispose();
     }
+
     let geo;
     type = parseInt(type);
-    if (type === 0) geo = new THREE.SphereGeometry(1, 128, 128);
-    else if (type === 1) {
-        // Manually create cube with connected vertices (from 0109수정(화인))
-        geo = createConnectedCube(1.4, 32); // 32 subdivisions per edge
+
+    switch (type) {
+        case 0: geo = new THREE.SphereGeometry(1, 128, 128); break;
+        case 1: geo = createConnectedCube(1.4, CONSTANTS.CUBE_SUBDIVISIONS); break;
+        case 2: geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128); break;
+        case 3: geo = new THREE.ConeGeometry(1, 2, 64, 64); break;
+        case 4: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
+        default: geo = new THREE.OctahedronGeometry(1.2, 32); break;
     }
-    else if (type === 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
-    else if (type === 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
-    else if (type === 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
-    else geo = new THREE.OctahedronGeometry(1.2, 32);
 
     const mat = new THREE.ShaderMaterial({
-        uniforms: shaderUniforms,
+        uniforms: appState.visuals.uniforms,
         vertexShader,
         fragmentShader,
         wireframe: true,
         transparent: true
     });
-    currentMesh = new THREE.Mesh(geo, mat);
-    scene.add(currentMesh);
+
+    appState.visuals.mesh = new THREE.Mesh(geo, mat);
+    appState.visuals.scene.add(appState.visuals.mesh);
 }
 
-// --- Audio & ML ---
-async function initEngine() {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 2048;
+// --- Audio & ML Engine ---
 
-    brain = ml5.neuralNetwork({
+/**
+ * Initialize audio context and ML brain
+ */
+async function initEngine() {
+    appState.audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (appState.audio.ctx.state === 'suspended') {
+        await appState.audio.ctx.resume();
+    }
+
+    appState.audio.analyser = appState.audio.ctx.createAnalyser();
+    appState.audio.analyser.fftSize = CONSTANTS.FFT_SIZE;
+
+    appState.ml.brain = ml5.neuralNetwork({
         inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
         outputs: ['y1', 'y2', 'y3', 'y4', 'shape'],
-        task: 'regression', debug: false
+        task: 'regression',
+        debug: false
     });
 
-    document.getElementById('btn-engine').style.display = 'none';
-    document.getElementById('btn-main').style.display = 'block';
-    document.getElementById('btn-upload').style.display = 'block';
-    document.getElementById('save-load-zone').style.display = 'block';
+    // Cache DOM elements
+    cacheUIElements();
+
+    appState.ui.elements.btnEngine.style.display = 'none';
+    appState.ui.elements.btnMain.style.display = 'block';
+    appState.ui.elements.btnUpload.style.display = 'block';
+    appState.ui.elements.saveLoadZone.style.display = 'block';
 
     await loadTrainingData();
     initThree();
     updateAllUIText();
-    updateStatus(translations[currentLang].statusReady, 'status-idle');
+    updateStatus(translations[appState.ui.lang].statusReady, 'status-idle');
 }
 
-async function handleRecord() {
-    const t = translations[currentLang];
-    if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
+/**
+ * Cache all DOM elements for better performance
+ */
+function cacheUIElements() {
+    const elements = appState.ui.elements;
+    elements.btnMain = document.getElementById('btn-main');
+    elements.btnPlay = document.getElementById('btn-play');
+    elements.btnConfirm = document.getElementById('btn-confirm');
+    elements.btnUpload = document.getElementById('btn-upload');
+    elements.btnEngine = document.getElementById('btn-engine');
+    elements.y1 = document.getElementById('y1');
+    elements.y2 = document.getElementById('y2');
+    elements.y3 = document.getElementById('y3');
+    elements.y4 = document.getElementById('y4');
+    elements.shapeSelector = document.getElementById('shape-selector');
+    elements.valLoud = document.getElementById('val-loud');
+    elements.valPitch = document.getElementById('val-pitch');
+    elements.valBright = document.getElementById('val-bright');
+    elements.valRough = document.getElementById('val-rough');
+    elements.dataCount = document.getElementById('data-count');
+    elements.labelingZone = document.getElementById('labeling-zone');
+    elements.saveLoadZone = document.getElementById('save-load-zone');
+    elements.status = document.getElementById('status');
+    elements.trainingOverlay = document.getElementById('training-overlay');
+    elements.trainingMessage = document.getElementById('training-message');
+    elements.trainingProgress = document.getElementById('training-progress');
+}
 
-    if (state === 'IDLE' || state === 'REVIEWING') {
-        state = 'RECORDING'; audioChunks = [];
-        recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
-        if(audioTag) { audioTag.pause(); isPlaying = false; }
-        
+/**
+ * Handle record/stop button
+ */
+async function handleRecord() {
+    const t = translations[appState.ui.lang];
+
+    if (appState.audio.ctx && appState.audio.ctx.state === 'suspended') {
+        await appState.audio.ctx.resume();
+    }
+
+    if (appState.ui.state === 'IDLE' || appState.ui.state === 'REVIEWING') {
+        // Start recording
+        appState.ui.state = 'RECORDING';
+        appState.audio.chunks = [];
+        appState.audio.recorded = {
+            loudness: 0,
+            pitch: 0,
+            brightness: 0,
+            roughness: 0,
+            count: 0
+        };
+
+        if (appState.audio.audioTag) {
+            appState.audio.audioTag.pause();
+            appState.audio.isPlaying = false;
+        }
+
         try {
-            if (!micStream) {
-                micStream = await navigator.mediaDevices.getUserMedia({
+            if (!appState.audio.stream) {
+                appState.audio.stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: false,
                         noiseSuppression: false,
                         autoGainControl: false,
-                        sampleRate: 48000
+                        sampleRate: CONSTANTS.SAMPLE_RATE
                     }
                 });
-                microphone = audioCtx.createMediaStreamSource(micStream);
 
-                // Use supported MIME type for better quality
+                appState.audio.microphone = appState.audio.ctx.createMediaStreamSource(appState.audio.stream);
+
                 let mimeType = 'audio/webm';
                 if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
                     mimeType = 'audio/webm;codecs=opus';
                 }
 
-                mediaRecorder = new MediaRecorder(micStream, {
+                appState.audio.recorder = new MediaRecorder(appState.audio.stream, {
                     mimeType: mimeType,
-                    audioBitsPerSecond: 128000
+                    audioBitsPerSecond: CONSTANTS.AUDIO_BITS_PER_SECOND
                 });
-                mediaRecorder.ondataavailable = e => {
-                    if (e.data.size > 0) audioChunks.push(e.data);
+
+                appState.audio.recorder.ondataavailable = e => {
+                    if (e.data.size > 0) appState.audio.chunks.push(e.data);
                 };
-                mediaRecorder.onstop = saveRecording;
+
+                appState.audio.recorder.onstop = saveRecording;
             }
-            microphone.connect(analyser);
-            mediaRecorder.start(100); // Collect data every 100ms for smooth recording
-            document.getElementById('btn-main').innerText = t.btnStop;
+
+            appState.audio.microphone.connect(appState.audio.analyser);
+            appState.audio.recorder.start(CONSTANTS.RECORDER_TIMESLICE);
+            appState.ui.elements.btnMain.innerText = t.btnStop;
             updateStatus(t.statusRecording, 'status-recording');
-            document.getElementById('labeling-zone').style.display = 'none';
-        } catch (err) { alert('마이크 권한이 필요합니다.'); state = 'IDLE'; }
+            appState.ui.elements.labelingZone.style.display = 'none';
+        } catch (err) {
+            alert('마이크 권한이 필요합니다.');
+            appState.ui.state = 'IDLE';
+        }
     } else {
-        mediaRecorder.stop();
-        state = 'REVIEWING';
-        if (microphone) microphone.disconnect();
-        
-        document.getElementById('labeling-zone').style.display = 'block';
-        document.getElementById('btn-play').style.display = 'block';
-        document.getElementById('btn-confirm').style.display = 'block';
-        
-        // 텍스트 강제 갱신 (Play 버튼 등)
+        // Stop recording
+        appState.audio.recorder.stop();
+        appState.ui.state = 'REVIEWING';
+
+        if (appState.audio.microphone) {
+            appState.audio.microphone.disconnect();
+        }
+
+        appState.ui.elements.labelingZone.style.display = 'block';
+        appState.ui.elements.btnPlay.style.display = 'block';
+        appState.ui.elements.btnConfirm.style.display = 'block';
+
         updateAllUIText();
         updateStatus(t.statusReviewing, 'status-review');
     }
 }
 
+/**
+ * Save recording and analyze
+ */
 function saveRecording() {
-    // Use the same MIME type that was used for recording
     let mimeType = 'audio/webm';
     if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
         mimeType = 'audio/webm;codecs=opus';
     }
 
-    const blob = new Blob(audioChunks, { type: mimeType });
-    audioTag = new Audio(URL.createObjectURL(blob));
-    audioTag.loop = true;
-    if(recordedX.count > 0) {
-        recordedX.loudness /= recordedX.count;
-        recordedX.pitch /= recordedX.count;
-        recordedX.brightness /= recordedX.count;
-        recordedX.roughness /= recordedX.count;
+    const blob = new Blob(appState.audio.chunks, { type: mimeType });
+    const audioURL = createTrackedObjectURL(blob);
+    appState.audio.audioTag = new Audio(audioURL);
+    appState.audio.audioTag.loop = true;
 
-        console.log('📝 Recorded audio features:', recordedX);
+    // Clear chunks after use
+    appState.audio.chunks = [];
 
-        // Use AI prediction if training data exists, otherwise use rule-based classification
-        if (customTrainingData.length > 0) {
-            // Use AI prediction
-            brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, results) => {
-                if (!err && results && results.length === 5) {
-                    const predictedShape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
-                    const shapeSelector = document.getElementById('shape-selector');
-                    if (shapeSelector) {
-                        shapeSelector.value = predictedShape;
-                        console.log('🤖 AI predicted shape:', SHAPE_NAMES[predictedShape], 'raw:', results[4]);
-                    }
-                    // Update shape name display
+    if (appState.audio.recorded.count > 0) {
+        // Average the recorded values
+        appState.audio.recorded.loudness /= appState.audio.recorded.count;
+        appState.audio.recorded.pitch /= appState.audio.recorded.count;
+        appState.audio.recorded.brightness /= appState.audio.recorded.count;
+        appState.audio.recorded.roughness /= appState.audio.recorded.count;
+
+        console.log('📝 Recorded audio features:', appState.audio.recorded);
+
+        // Predict or classify shape
+        if (appState.ml.trainingData.length > 0) {
+            performAIPrediction(appState.audio.recorded, (prediction) => {
+                if (prediction) {
+                    appState.ui.elements.shapeSelector.value = prediction.shape;
+                    console.log('🤖 AI predicted shape:', SHAPE_NAMES[prediction.shape]);
                     updateShapeNameDisplay();
                 }
             });
         } else {
-            // No training data: use rule-based classification
-            const autoShape = autoClassifyShape(
-                recordedX.loudness,
-                recordedX.pitch,
-                recordedX.brightness,
-                recordedX.roughness
-            );
-
-            // Set shape selector to auto-classified shape
-            const shapeSelector = document.getElementById('shape-selector');
-            if (shapeSelector) {
-                shapeSelector.value = autoShape;
-                console.log('✏️ Rule-based shape:', SHAPE_NAMES[autoShape]);
-            }
-            // Update shape name display
+            const autoShape = autoClassifyShape(appState.audio.recorded);
+            appState.ui.elements.shapeSelector.value = autoShape;
+            console.log('✏️ Rule-based shape:', SHAPE_NAMES[autoShape]);
             updateShapeNameDisplay();
         }
     }
 }
 
+/**
+ * Handle file upload
+ */
 async function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    const t = translations[currentLang];
+    const t = translations[appState.ui.lang];
 
     try {
         // Clean up previous audio
-        if (audioTag) {
-            audioTag.pause();
-            audioTag = null;
+        if (appState.audio.audioTag) {
+            appState.audio.audioTag.pause();
+            appState.audio.audioTag = null;
         }
-        if (sourceNode) {
-            sourceNode.disconnect();
-            sourceNode = null;
+
+        if (appState.audio.sourceNode) {
+            appState.audio.sourceNode.disconnect();
+            appState.audio.sourceNode = null;
         }
 
         // Load the uploaded file
-        const fileURL = URL.createObjectURL(file);
-        audioTag = new Audio(fileURL);
-        audioTag.loop = true;
+        const fileURL = createTrackedObjectURL(file);
+        appState.audio.audioTag = new Audio(fileURL);
+        appState.audio.audioTag.loop = true;
 
-        // Wait for the audio to load metadata
         await new Promise((resolve, reject) => {
-            audioTag.onloadedmetadata = resolve;
-            audioTag.onerror = reject;
+            appState.audio.audioTag.onloadedmetadata = resolve;
+            appState.audio.audioTag.onerror = reject;
         });
 
-        // Analyze the uploaded audio file
         console.log('Analyzing uploaded file:', file.name);
 
-        // Reset recorded values
-        recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
+        appState.audio.recorded = {
+            loudness: 0,
+            pitch: 0,
+            brightness: 0,
+            roughness: 0,
+            count: 0
+        };
 
-        // Create source node and connect to analyser
-        sourceNode = audioCtx.createMediaElementSource(audioTag);
-        sourceNode.connect(analyser);
-        analyser.connect(audioCtx.destination);
+        // Create source node and analyze
+        appState.audio.sourceNode = appState.audio.ctx.createMediaElementSource(appState.audio.audioTag);
+        appState.audio.sourceNode.connect(appState.audio.analyser);
+        appState.audio.analyser.connect(appState.audio.ctx.destination);
 
-        // Play the audio to analyze it
-        await audioTag.play();
-        isPlaying = true;
+        await appState.audio.audioTag.play();
+        appState.audio.isPlaying = true;
 
-        // Analyze for 3 seconds to get average values
-        const analyzeDuration = 3000; // 3 seconds
-        const analyzeInterval = 50; // 50ms intervals
+        // Analyze for specified duration
+        const maxCount = CONSTANTS.ANALYZE_DURATION / CONSTANTS.ANALYZE_INTERVAL;
         let analyzeCount = 0;
-        const maxCount = analyzeDuration / analyzeInterval;
 
         const analyzeTimer = setInterval(() => {
-            const data = new Uint8Array(analyser.frequencyBinCount);
-            const time = new Uint8Array(analyser.frequencyBinCount);
-            analyser.getByteFrequencyData(data);
-            analyser.getByteTimeDomainData(time);
+            const frequencyData = new Uint8Array(appState.audio.analyser.frequencyBinCount);
+            const timeDomainData = new Uint8Array(appState.audio.analyser.frequencyBinCount);
+            appState.audio.analyser.getByteFrequencyData(frequencyData);
+            appState.audio.analyser.getByteTimeDomainData(timeDomainData);
 
-            // Calculate loudness
-            let sum = 0;
-            for (let v of time) {
-                let n = (v - 128) / 128;
-                sum += n * n;
-            }
-            const loudness = Math.sqrt(sum / time.length) * 10.0;
+            const features = calculateAudioFeatures(frequencyData, timeDomainData);
 
-            // Calculate pitch
-            let te = 0, we = 0;
-            for (let i = 0; i < data.length; i++) {
-                we += i * data[i];
-                te += data[i];
-            }
-            const pitch = te > 0 ? (we / te) / 50.0 : 0;
-            const brightness = pitch * 1.2;
-
-            // Calculate roughness
-            let zcr = 0;
-            for (let i = 1; i < time.length; i++) {
-                if (time[i] > 128 && time[i - 1] <= 128) zcr++;
-            }
-            const roughness = zcr / 40.0;
-
-            // Accumulate values
-            recordedX.loudness += loudness;
-            recordedX.pitch += pitch;
-            recordedX.brightness += brightness;
-            recordedX.roughness += roughness;
-            recordedX.count++;
+            appState.audio.recorded.loudness += features.loudness;
+            appState.audio.recorded.pitch += features.pitch;
+            appState.audio.recorded.brightness += features.brightness;
+            appState.audio.recorded.roughness += features.roughness;
+            appState.audio.recorded.count++;
 
             analyzeCount++;
             if (analyzeCount >= maxCount) {
                 clearInterval(analyzeTimer);
 
-                // Calculate averages
-                if (recordedX.count > 0) {
-                    recordedX.loudness /= recordedX.count;
-                    recordedX.pitch /= recordedX.count;
-                    recordedX.brightness /= recordedX.count;
-                    recordedX.roughness /= recordedX.count;
+                if (appState.audio.recorded.count > 0) {
+                    appState.audio.recorded.loudness /= appState.audio.recorded.count;
+                    appState.audio.recorded.pitch /= appState.audio.recorded.count;
+                    appState.audio.recorded.brightness /= appState.audio.recorded.count;
+                    appState.audio.recorded.roughness /= appState.audio.recorded.count;
                 }
 
-                console.log('File analysis complete:', recordedX);
+                console.log('File analysis complete:', appState.audio.recorded);
 
-                // Auto-classify shape based on uploaded file audio features
-                const autoShape = autoClassifyShape(
-                    recordedX.loudness,
-                    recordedX.pitch,
-                    recordedX.brightness,
-                    recordedX.roughness
-                );
-
-                // Set shape selector to auto-classified shape
-                const shapeSelector = document.getElementById('shape-selector');
-                if (shapeSelector) {
-                    shapeSelector.value = autoShape;
-                    targetY.shape = autoShape;
-                    currentY.shape = autoShape;
-                    previousShape = -1; // Force shape update
-                    createShape(autoShape);
-                    updateShapeNameDisplay();
-                }
+                const autoShape = autoClassifyShape(appState.audio.recorded);
+                appState.ui.elements.shapeSelector.value = autoShape;
+                appState.visuals.target.shape = autoShape;
+                appState.visuals.current.shape = autoShape;
+                appState.visuals.previousShape = -1;
+                createShape(autoShape);
+                updateShapeNameDisplay();
 
                 console.log('🎯 Auto-classified shape for uploaded file:', SHAPE_NAMES[autoShape]);
 
-                // Pause after analysis
-                audioTag.pause();
-                audioTag.currentTime = 0;
-                isPlaying = false;
+                appState.audio.audioTag.pause();
+                appState.audio.audioTag.currentTime = 0;
+                appState.audio.isPlaying = false;
 
-                // Switch to REVIEWING state
-                state = 'REVIEWING';
-                document.getElementById('labeling-zone').style.display = 'block';
-                document.getElementById('btn-play').style.display = 'block';
-                document.getElementById('btn-confirm').style.display = 'block';
+                appState.ui.state = 'REVIEWING';
+                appState.ui.elements.labelingZone.style.display = 'block';
+                appState.ui.elements.btnPlay.style.display = 'block';
+                appState.ui.elements.btnConfirm.style.display = 'block';
                 updateAllUIText();
                 updateStatus(t.statusReviewing, 'status-review');
             }
-        }, analyzeInterval);
+        }, CONSTANTS.ANALYZE_INTERVAL);
 
-        // Reset file input
         event.target.value = '';
 
     } catch (err) {
         console.error('File upload error:', err);
-        alert(currentLang === 'KR' ? '파일 로드 실패: ' + err.message : 'File load failed: ' + err.message);
+        alert(appState.ui.lang === 'KR' ? '파일 로드 실패: ' + err.message : 'File load failed: ' + err.message);
         event.target.value = '';
     }
 }
 
+/**
+ * Toggle audio playback
+ */
 function togglePlayback() {
-    const playBtn = document.getElementById('btn-play');
-    const t = translations[currentLang];
-    if (!audioTag) return;
-    if (audioTag.paused) {
-        if (!sourceNode) {
-            sourceNode = audioCtx.createMediaElementSource(audioTag);
-            sourceNode.connect(analyser); 
-            analyser.connect(audioCtx.destination);
+    const t = translations[appState.ui.lang];
+    if (!appState.audio.audioTag) return;
+
+    if (appState.audio.audioTag.paused) {
+        if (!appState.audio.sourceNode) {
+            appState.audio.sourceNode = appState.audio.ctx.createMediaElementSource(appState.audio.audioTag);
+            appState.audio.sourceNode.connect(appState.audio.analyser);
+            appState.audio.analyser.connect(appState.audio.ctx.destination);
         }
-        audioTag.play(); isPlaying = true;
-        playBtn.innerText = t.btnPause;
+        appState.audio.audioTag.play();
+        appState.audio.isPlaying = true;
+        appState.ui.elements.btnPlay.innerText = t.btnPause;
     } else {
-        audioTag.pause(); isPlaying = false;
-        playBtn.innerText = t.btnPlay;
+        appState.audio.audioTag.pause();
+        appState.audio.isPlaying = false;
+        appState.ui.elements.btnPlay.innerText = t.btnPlay;
     }
 }
 
+/**
+ * Main animation loop
+ */
 function animate() {
     requestAnimationFrame(animate);
 
-    if (analyser) {
+    if (appState.audio.analyser && appState.audio.ctx && appState.audio.ctx.state === 'running') {
         analyzeAudio();
     }
 
-    shaderUniforms.uTime.value += 0.05;
-    shaderUniforms.uLoudness.value = currentX.loudness;
+    appState.visuals.uniforms.uTime.value += CONSTANTS.TIME_INCREMENT;
+    appState.visuals.uniforms.uLoudness.value = appState.audio.features.loudness;
 
-    if (state === 'REVIEWING') {
-        // REVIEWING 모드: 슬라이더 값 즉시 반영
-        targetY.y1 = parseFloat(document.getElementById('y1').value);
-        targetY.y2 = parseFloat(document.getElementById('y2').value);
-        targetY.y3 = parseFloat(document.getElementById('y3').value);
-        targetY.y4 = parseFloat(document.getElementById('y4').value);
-        targetY.shape = parseInt(document.getElementById('shape-selector').value);
-    } else if (state === 'RECORDING') {
-        // During recording: Use AI prediction if brain is trained, otherwise keep sphere
-        if (isBrainTrained && customTrainingData.length > 0) {
-            // Use AI prediction every 5 frames to reduce load
-            predictionFrameCounter++;
-            if (predictionFrameCounter >= PREDICTION_INTERVAL) {
-                predictionFrameCounter = 0;
-                brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
-                    if (!err && results && results.length === 5) {
-                        targetY.y1 = results[0];
-                        targetY.y2 = results[1];
-                        targetY.y3 = results[2];
-                        targetY.y4 = results[3];
-                        targetY.shape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
-                    }
-                });
-            }
-        } else {
-            // No training data or not trained yet: Keep sphere shape and use rule-based parameters
-            targetY.shape = 0;
-            const suggestedParams = autoSuggestParameters(currentX);
-            targetY.y1 = suggestedParams.y1;
-            targetY.y2 = suggestedParams.y2;
-            targetY.y3 = suggestedParams.y3;
-            targetY.y4 = suggestedParams.y4;
+    // Update target visuals based on state
+    updateTargetVisuals();
+
+    // Smooth interpolation with threshold-based optimization
+    const lerpSpeed = appState.ui.state === 'REVIEWING' ?
+        CONSTANTS.LERP_SPEED_REVIEWING : CONSTANTS.LERP_SPEED_LIVE;
+
+    const params = ['y1', 'y2', 'y3', 'y4', 'shape'];
+    params.forEach(param => {
+        const delta = appState.visuals.target[param] - appState.visuals.current[param];
+        if (Math.abs(delta) > CONSTANTS.LERP_THRESHOLD) {
+            appState.visuals.current[param] += delta * lerpSpeed;
         }
-    } else if (state === 'IDLE') {
-        // IDLE state: Use AI prediction if brain is trained, otherwise keep sphere
-        if (isBrainTrained && customTrainingData.length > 0) {
-            // Use AI prediction every 5 frames to reduce load
-            predictionFrameCounter++;
-            if (predictionFrameCounter >= PREDICTION_INTERVAL) {
-                predictionFrameCounter = 0;
-                brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
-                    if (!err && results && results.length === 5) {
-                        targetY.y1 = results[0];
-                        targetY.y2 = results[1];
-                        targetY.y3 = results[2];
-                        targetY.y4 = results[3];
-                        targetY.shape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
-                    }
-                });
-            }
-        } else {
-            // No training data: Keep sphere shape and use rule-based parameters
-            targetY.shape = 0;
-            const suggestedParams = autoSuggestParameters(currentX);
-            targetY.y1 = suggestedParams.y1;
-            targetY.y2 = suggestedParams.y2;
-            targetY.y3 = suggestedParams.y3;
-            targetY.y4 = suggestedParams.y4;
-        }
-    }
+    });
 
-    // 시각화 수치 부드럽게 전이 (리뷰 모드에서는 더 빠르게)
-    const lerpSpeed = (state === 'REVIEWING') ? RENDER_CONSTANTS.LERP_SPEED_REVIEWING : RENDER_CONSTANTS.LERP_SPEED_LIVE;
-    currentY.y1 += (targetY.y1 - currentY.y1) * lerpSpeed;
-    currentY.y2 += (targetY.y2 - currentY.y2) * lerpSpeed;
-    currentY.y3 += (targetY.y3 - currentY.y3) * lerpSpeed;
-    currentY.y4 += (targetY.y4 - currentY.y4) * lerpSpeed;
-    currentY.shape += (targetY.shape - currentY.shape) * lerpSpeed;
-
-    // 형태 변경 감지 (previousShape 사용)
-    const roundedShape = Math.round(currentY.shape);
-    if (roundedShape !== previousShape && roundedShape >= 0 && roundedShape <= 5) {
-        previousShape = roundedShape;
+    // Shape change detection (optimized)
+    const roundedShape = Math.round(appState.visuals.current.shape);
+    if (roundedShape !== appState.visuals.previousShape && roundedShape >= 0 && roundedShape <= 5) {
+        appState.visuals.previousShape = roundedShape;
         createShape(roundedShape);
         updateShapeNameDisplay();
     }
 
-    // Shader uniforms 업데이트
-    for (let k of ['y1', 'y2', 'y3', 'y4']) {
-        shaderUniforms[`u${k.toUpperCase()}`].value = currentY[k];
+    // Update shader uniforms directly (optimized)
+    appState.visuals.uniforms.uY1.value = appState.visuals.current.y1;
+    appState.visuals.uniforms.uY2.value = appState.visuals.current.y2;
+    appState.visuals.uniforms.uY3.value = appState.visuals.current.y3;
+    appState.visuals.uniforms.uY4.value = appState.visuals.current.y4;
+
+    if (appState.visuals.mesh) {
+        appState.visuals.mesh.rotation.y += CONSTANTS.ROTATION_SPEED;
     }
 
-    if (currentMesh) {
-        currentMesh.rotation.y += 0.005;
-    }
-
-    if (renderer && scene && camera) {
-        renderer.render(scene, camera);
-    } else if (!renderer) {
-        console.error('[ERROR]Renderer is null in animate()');
+    if (appState.visuals.renderer && appState.visuals.scene && appState.visuals.camera) {
+        appState.visuals.renderer.render(appState.visuals.scene, appState.visuals.camera);
     }
 }
 
+/**
+ * Analyze audio and update display (throttled)
+ */
 function analyzeAudio() {
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    const time = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(data); 
-    analyser.getByteTimeDomainData(time);
-    
-    if (state === 'REVIEWING' && !isPlaying) {
-        currentX = {...recordedX};
+    const frequencyData = new Uint8Array(appState.audio.analyser.frequencyBinCount);
+    const timeDomainData = new Uint8Array(appState.audio.analyser.frequencyBinCount);
+    appState.audio.analyser.getByteFrequencyData(frequencyData);
+    appState.audio.analyser.getByteTimeDomainData(timeDomainData);
+
+    if (appState.ui.state === 'REVIEWING' && !appState.audio.isPlaying) {
+        appState.audio.features = { ...appState.audio.recorded };
     } else {
-        let sum = 0; 
-        for(let v of time) { let n=(v-128)/128; sum+=n*n; }
-        currentX.loudness = Math.sqrt(sum/time.length) * 10.0;
-        
-        let te=0, we=0; 
-        for(let i=0; i<data.length; i++) { we+=i*data[i]; te+=data[i]; }
-        currentX.pitch = te>0 ? (we/te)/50.0 : 0;
-        currentX.brightness = currentX.pitch * 1.2;
-        
-        let zcr=0; 
-        for(let i=1; i<time.length; i++) if(time[i]>128 && time[i-1]<=128) zcr++;
-        currentX.roughness = zcr/40.0;
-        
-        if (state === 'RECORDING') {
-            recordedX.loudness += currentX.loudness; 
-            recordedX.pitch += currentX.pitch;
-            recordedX.brightness += currentX.brightness; 
-            recordedX.roughness += currentX.roughness;
-            recordedX.count++;
+        const features = calculateAudioFeatures(frequencyData, timeDomainData);
+        appState.audio.features = features;
+
+        if (appState.ui.state === 'RECORDING') {
+            appState.audio.recorded.loudness += features.loudness;
+            appState.audio.recorded.pitch += features.pitch;
+            appState.audio.recorded.brightness += features.brightness;
+            appState.audio.recorded.roughness += features.roughness;
+            appState.audio.recorded.count++;
         }
     }
-    const l = document.getElementById('val-loud'); if(l) l.innerText = currentX.loudness.toFixed(2);
-    const p = document.getElementById('val-pitch'); if(p) p.innerText = currentX.pitch.toFixed(2);
-    const b = document.getElementById('val-bright'); if(b) b.innerText = currentX.brightness.toFixed(2);
-    const r = document.getElementById('val-rough'); if(r) r.innerText = currentX.roughness.toFixed(2);
+
+    // Throttle DOM updates for audio display
+    const now = Date.now();
+    if (now - appState.ui.lastAudioDisplayUpdate > CONSTANTS.DOM_UPDATE_INTERVAL) {
+        const shouldUpdate =
+            Math.abs(appState.audio.features.loudness - appState.ui.lastAudioValues.loudness) > CONSTANTS.DOM_UPDATE_THRESHOLD ||
+            Math.abs(appState.audio.features.pitch - appState.ui.lastAudioValues.pitch) > CONSTANTS.DOM_UPDATE_THRESHOLD ||
+            Math.abs(appState.audio.features.brightness - appState.ui.lastAudioValues.brightness) > CONSTANTS.DOM_UPDATE_THRESHOLD ||
+            Math.abs(appState.audio.features.roughness - appState.ui.lastAudioValues.roughness) > CONSTANTS.DOM_UPDATE_THRESHOLD;
+
+        if (shouldUpdate) {
+            if (appState.ui.elements.valLoud) {
+                appState.ui.elements.valLoud.innerText = appState.audio.features.loudness.toFixed(2);
+            }
+            if (appState.ui.elements.valPitch) {
+                appState.ui.elements.valPitch.innerText = appState.audio.features.pitch.toFixed(2);
+            }
+            if (appState.ui.elements.valBright) {
+                appState.ui.elements.valBright.innerText = appState.audio.features.brightness.toFixed(2);
+            }
+            if (appState.ui.elements.valRough) {
+                appState.ui.elements.valRough.innerText = appState.audio.features.roughness.toFixed(2);
+            }
+
+            appState.ui.lastAudioValues = { ...appState.audio.features };
+            appState.ui.lastAudioDisplayUpdate = now;
+        }
+    }
 }
 
+/**
+ * Confirm training data and train model
+ */
 function confirmTrainingWrapper() {
-    if (!brain) {
+    if (!appState.ml.brain) {
         console.error('Brain not initialized');
         return;
     }
 
-    const labels = [
-        parseFloat(document.getElementById('y1').value),
-        parseFloat(document.getElementById('y2').value),
-        parseFloat(document.getElementById('y3').value),
-        parseFloat(document.getElementById('y4').value),
-        parseInt(document.getElementById('shape-selector').value) / 5.0
-    ];
-    brain.addData([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], labels);
-    customTrainingData.push({ x: {...recordedX}, y: labels });
-    saveTrainingData();
+    // Validate slider inputs
+    const y1 = parseFloat(appState.ui.elements.y1.value);
+    const y2 = parseFloat(appState.ui.elements.y2.value);
+    const y3 = parseFloat(appState.ui.elements.y3.value);
+    const y4 = parseFloat(appState.ui.elements.y4.value);
+    const shape = parseInt(appState.ui.elements.shapeSelector.value);
 
-    // Check if brain has data before training
-    if (customTrainingData.length === 0) {
-        console.error('No training data available');
+    if (isNaN(y1) || isNaN(y2) || isNaN(y3) || isNaN(y4) || isNaN(shape)) {
+        console.error('Invalid slider values');
         return;
     }
 
-    // Update data count immediately
-    const dc = document.getElementById('data-count');
-    if (dc) dc.innerText = customTrainingData.length;
+    if (y1 < 0 || y1 > 1 || y2 < 0 || y2 > 1 || y3 < 0 || y3 > 1 || y4 < 0 || y4 > 1) {
+        console.error('Slider values out of range');
+        return;
+    }
 
-    // Hide UI elements BEFORE training to keep graphics visible
-    document.getElementById('labeling-zone').style.display = 'none';
-    document.getElementById('btn-play').style.display = 'none';
-    document.getElementById('btn-confirm').style.display = 'none';
-    state = 'IDLE';
-    updateStatus(translations[currentLang].statusReady, 'status-idle');
+    if (shape < 0 || shape > 5) {
+        console.error('Invalid shape value');
+        return;
+    }
+
+    const labels = [y1, y2, y3, y4, shape / 5.0];
+
+    appState.ml.brain.addData(
+        [
+            appState.audio.recorded.loudness,
+            appState.audio.recorded.pitch,
+            appState.audio.recorded.brightness,
+            appState.audio.recorded.roughness
+        ],
+        labels
+    );
+
+    appState.ml.trainingData.push({
+        x: { ...appState.audio.recorded },
+        y: labels
+    });
+
+    saveTrainingData();
+
+    if (appState.ui.elements.dataCount) {
+        appState.ui.elements.dataCount.innerText = appState.ml.trainingData.length;
+    }
+
+    // Hide UI elements before training
+    appState.ui.elements.labelingZone.style.display = 'none';
+    appState.ui.elements.btnPlay.style.display = 'none';
+    appState.ui.elements.btnConfirm.style.display = 'none';
+    appState.ui.state = 'IDLE';
+    updateStatus(translations[appState.ui.lang].statusReady, 'status-idle');
     updateAllUIText();
 
-    // Normalize and train in background after UI is hidden
-    brain.normalizeData();
+    // Normalize and train
+    appState.ml.brain.normalizeData();
 
     // Show training overlay
-    const overlay = document.getElementById('training-overlay');
-    const message = document.getElementById('training-message');
-    const progress = document.getElementById('training-progress');
-
-    if (overlay) {
-        overlay.style.display = 'flex';
-        message.textContent = currentLang === 'KR' ? 'AI 모델 학습 중...' : 'Training AI Model...';
-        progress.textContent = currentLang === 'KR' ? '잠시만 기다려주세요 (50 epochs)' : 'Please wait (50 epochs)';
+    if (appState.ui.elements.trainingOverlay) {
+        appState.ui.elements.trainingOverlay.style.display = 'flex';
+        appState.ui.elements.trainingMessage.textContent =
+            appState.ui.lang === 'KR' ? 'AI 모델 학습 중...' : 'Training AI Model...';
+        appState.ui.elements.trainingProgress.textContent =
+            appState.ui.lang === 'KR' ? '잠시만 기다려주세요 (50 epochs)' : 'Please wait (50 epochs)';
     }
 
     setTimeout(() => {
         console.log('Starting training in background...');
-        console.log('Current state:', state);
-        console.log('Renderer exists:', !!renderer);
-        console.log('Current mesh exists:', !!currentMesh);
 
-        brain.train({ epochs: 50 }, () => {
-            isBrainTrained = true;
-            console.log('Training complete! AI mode enabled.');
-            console.log('State after training:', state);
+        try {
+            appState.ml.brain.train({ epochs: CONSTANTS.TRAINING_EPOCHS }, () => {
+                appState.ml.isTrained = true;
+                console.log('Training complete! AI mode enabled.');
 
-            // Auto-refresh after brief delay to ensure clean state
-            setTimeout(() => {
-                location.reload();
-            }, 500);
-        });
-    }, 500);
+                setTimeout(() => {
+                    location.reload();
+                }, CONSTANTS.RELOAD_DELAY);
+            });
+        } catch (err) {
+            console.error('Training failed:', err);
+            if (appState.ui.elements.trainingOverlay) {
+                appState.ui.elements.trainingOverlay.style.display = 'none';
+            }
+            alert(appState.ui.lang === 'KR' ? '학습 실패: ' + err.message : 'Training failed: ' + err.message);
+        }
+    }, CONSTANTS.TRAINING_DELAY);
 }
 
+/**
+ * Save training data to localStorage and server
+ */
 async function saveTrainingData() {
     try {
-        // Always save to localStorage
-        const dataToSave = JSON.stringify({ data: customTrainingData });
+        const dataToSave = JSON.stringify({ data: appState.ml.trainingData });
         localStorage.setItem('soundTo3D_data', dataToSave);
-        console.log('Training data saved to localStorage:', customTrainingData.length, 'samples');
+        console.log('Training data saved to localStorage:', appState.ml.trainingData.length, 'samples');
 
-        // If server is enabled, also save to server
         if (USE_SERVER) {
-            const lastData = customTrainingData[customTrainingData.length - 1];
-            const response = await fetch(`${API_URL}/api/data`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(lastData)
-            });
-            const result = await response.json();
-            console.log('Training data saved to server:', result.count, 'total samples');
+            const lastData = appState.ml.trainingData[appState.ml.trainingData.length - 1];
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+            try {
+                const response = await fetch(`${API_URL}/api/data`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(lastData),
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                const result = await response.json();
+                console.log('Training data saved to server:', result.count, 'total samples');
+            } catch (fetchErr) {
+                if (fetchErr.name === 'AbortError') {
+                    console.warn('Server save timed out');
+                } else {
+                    throw fetchErr;
+                }
+            }
         }
     } catch (e) {
         console.error('Failed to save training data:', e);
-        // Don't alert on save failures, just log
     }
 }
+
+/**
+ * Load training data from server or localStorage
+ */
 async function loadTrainingData() {
     try {
-        // If server is enabled, load from server
         if (USE_SERVER) {
-            const response = await fetch(`${API_URL}/api/data`);
-            const result = await response.json();
-            if (result.success && result.data.length > 0) {
-                customTrainingData = result.data;
-                console.log('Training data loaded from server:', customTrainingData.length, 'samples');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-                // Also save to localStorage for offline use
-                const dataToSave = JSON.stringify({ data: customTrainingData });
-                localStorage.setItem('soundTo3D_data', dataToSave);
+            try {
+                const response = await fetch(`${API_URL}/api/data`, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                const result = await response.json();
+                if (result.success && result.data.length > 0) {
+                    appState.ml.trainingData = result.data;
+                    console.log('Training data loaded from server:', appState.ml.trainingData.length, 'samples');
+
+                    const dataToSave = JSON.stringify({ data: appState.ml.trainingData });
+                    localStorage.setItem('soundTo3D_data', dataToSave);
+                }
+            } catch (fetchErr) {
+                if (fetchErr.name === 'AbortError') {
+                    console.warn('Server load timed out, using localStorage');
+                } else {
+                    throw fetchErr;
+                }
             }
-        } else {
-            // Load from localStorage
-            const saved = localStorage.getItem('soundTo3D_data');
-            if (!saved) {
-                console.log('No saved training data found');
-                return;
-            }
-            const obj = JSON.parse(saved);
-            customTrainingData = obj.data || [];
-            console.log('Training data loaded from localStorage:', customTrainingData.length, 'samples');
         }
 
-        const dc = document.getElementById('data-count');
-        if (dc) dc.innerText = customTrainingData.length;
+        // Fallback to localStorage
+        if (appState.ml.trainingData.length === 0) {
+            const saved = localStorage.getItem('soundTo3D_data');
+            if (saved) {
+                const obj = JSON.parse(saved);
+                appState.ml.trainingData = obj.data || [];
+                console.log('Training data loaded from localStorage:', appState.ml.trainingData.length, 'samples');
+            }
+        }
 
-        if (brain && customTrainingData.length > 0) {
+        if (appState.ui.elements.dataCount) {
+            appState.ui.elements.dataCount.innerText = appState.ml.trainingData.length;
+        }
+
+        if (appState.ml.brain && appState.ml.trainingData.length > 0) {
             console.log('Loading previous training data into brain...');
-            customTrainingData.forEach(i => brain.addData([i.x.loudness, i.x.pitch, i.x.brightness, i.x.roughness], i.y));
-            brain.normalizeData();
+            appState.ml.trainingData.forEach(i =>
+                appState.ml.brain.addData(
+                    [i.x.loudness, i.x.pitch, i.x.brightness, i.x.roughness],
+                    i.y
+                )
+            );
+            appState.ml.brain.normalizeData();
             console.log('Data loaded. Model will train when you add new data.');
         }
     } catch (e) {
         console.error('Failed to load training data:', e);
-        // Try localStorage as fallback
+
+        // Final fallback
         const saved = localStorage.getItem('soundTo3D_data');
         if (saved) {
-            const obj = JSON.parse(saved);
-            customTrainingData = obj.data || [];
-            console.log('Fallback: Training data loaded from localStorage:', customTrainingData.length, 'samples');
+            try {
+                const obj = JSON.parse(saved);
+                appState.ml.trainingData = obj.data || [];
+                console.log('Fallback: Training data loaded from localStorage:', appState.ml.trainingData.length, 'samples');
+            } catch (parseErr) {
+                console.error('Failed to parse localStorage data:', parseErr);
+            }
         }
     }
 }
 
+/**
+ * Clear all training data
+ */
 async function clearAllData() {
-    const message = currentLang === 'KR' ? "정말로 모든 학습 데이터를 삭제하시겠습니까?" : "Are you sure you want to delete all training data?";
-    if(confirm(message)) {
-        try {
-            // Clear localStorage
-            localStorage.removeItem('soundTo3D_data');
-            customTrainingData = [];
-            isBrainTrained = false; // Reset trained flag
+    const message = appState.ui.lang === 'KR' ?
+        "정말로 모든 학습 데이터를 삭제하시겠습니까?" :
+        "Are you sure you want to delete all training data?";
 
-            // If server is enabled, also clear server data
+    if (confirm(message)) {
+        try {
+            localStorage.removeItem('soundTo3D_data');
+            appState.ml.trainingData = [];
+            appState.ml.isTrained = false;
+
             if (USE_SERVER) {
-                await fetch(`${API_URL}/api/data`, { method: 'DELETE' });
-                console.log('Server data cleared');
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                try {
+                    await fetch(`${API_URL}/api/data`, {
+                        method: 'DELETE',
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+                    console.log('Server data cleared');
+                } catch (fetchErr) {
+                    console.warn('Server clear failed or timed out');
+                }
             }
 
             location.reload();
@@ -1005,54 +1332,119 @@ async function clearAllData() {
 }
 
 // --- UI & Translation ---
+
 const translations = {
     KR: {
-        title: "IML Research", btnEngine: "오디오 엔진 가동", btnRecord: "녹음 시작", btnStop: "중단", btnReRecord: "다시 녹음",
-        btnPlay: "소리 재생", btnPause: "재생 중지", btnConfirm: "데이터 확정 및 학습", btnExport: "CSV 추출",
-        btnUpload: "파일 업로드", btnClear: "모든 데이터 삭제",
-        statusReady: "준비 완료", statusRecording: "녹음 중...", statusReviewing: "검토 및 라벨링",
-        labelLoud: "음량", labelPitch: "음높이", labelBright: "밝기", labelRough: "거칠기",
-        y1Label: "y1: 각짐", y1Left: "둥근", y1Right: "각진",
-        y2Label: "y2: 뾰족함", y2Left: "부드러운", y2Right: "뾰족한",
-        y3Label: "y3: 거칠기", y3Left: "매끈한", y3Right: "거친",
-        y4Label: "y4: 복잡도", y4Left: "단순", y4Right: "복잡",
-        shapeLabel: "기본 형태", dataLabel: "학습 데이터:", samplesLabel: "개",
+        title: "IML Research",
+        btnEngine: "오디오 엔진 가동",
+        btnRecord: "녹음 시작",
+        btnStop: "중단",
+        btnReRecord: "다시 녹음",
+        btnPlay: "소리 재생",
+        btnPause: "재생 중지",
+        btnConfirm: "데이터 확정 및 학습",
+        btnExport: "CSV 추출",
+        btnUpload: "파일 업로드",
+        btnClear: "모든 데이터 삭제",
+        statusReady: "준비 완료",
+        statusRecording: "녹음 중...",
+        statusReviewing: "검토 및 라벨링",
+        labelLoud: "음량",
+        labelPitch: "음높이",
+        labelBright: "밝기",
+        labelRough: "거칠기",
+        y1Label: "y1: 각짐",
+        y1Left: "둥근",
+        y1Right: "각진",
+        y2Label: "y2: 뾰족함",
+        y2Left: "부드러운",
+        y2Right: "뾰족한",
+        y3Label: "y3: 거칠기",
+        y3Left: "매끈한",
+        y3Right: "거친",
+        y4Label: "y4: 복잡도",
+        y4Left: "단순",
+        y4Right: "복잡",
+        shapeLabel: "기본 형태",
+        dataLabel: "학습 데이터:",
+        samplesLabel: "개",
         shapeNames: ['구', '정육면체', '토러스', '원뿔', '원기둥', '팔면체']
     },
     EN: {
-        title: "IML Research", btnEngine: "Start Engine", btnRecord: "Record", btnStop: "Stop", btnReRecord: "Re-record",
-        btnPlay: "Play", btnPause: "Pause", btnConfirm: "Confirm & Train", btnExport: "Export CSV",
-        btnUpload: "Upload File", btnClear: "Clear All Data",
-        statusReady: "Ready", statusRecording: "Recording...", statusReviewing: "Reviewing...",
-        labelLoud: "Loudness", labelPitch: "Pitch", labelBright: "Brightness", labelRough: "Roughness",
-        y1Label: "y1: Angularity", y1Left: "Round", y1Right: "Angular",
-        y2Label: "y2: Spikiness", y2Left: "Smooth", y2Right: "Spiky",
-        y3Label: "y3: Texture", y3Left: "Sleek", y3Right: "Rough",
-        y4Label: "y4: Density", y4Left: "Simple", y4Right: "Complex",
-        shapeLabel: "Base Shape", dataLabel: "Data:", samplesLabel: "samples",
+        title: "IML Research",
+        btnEngine: "Start Engine",
+        btnRecord: "Record",
+        btnStop: "Stop",
+        btnReRecord: "Re-record",
+        btnPlay: "Play",
+        btnPause: "Pause",
+        btnConfirm: "Confirm & Train",
+        btnExport: "Export CSV",
+        btnUpload: "Upload File",
+        btnClear: "Clear All Data",
+        statusReady: "Ready",
+        statusRecording: "Recording...",
+        statusReviewing: "Reviewing...",
+        labelLoud: "Loudness",
+        labelPitch: "Pitch",
+        labelBright: "Brightness",
+        labelRough: "Roughness",
+        y1Label: "y1: Angularity",
+        y1Left: "Round",
+        y1Right: "Angular",
+        y2Label: "y2: Spikiness",
+        y2Left: "Smooth",
+        y2Right: "Spiky",
+        y3Label: "y3: Texture",
+        y3Left: "Sleek",
+        y3Right: "Rough",
+        y4Label: "y4: Density",
+        y4Left: "Simple",
+        y4Right: "Complex",
+        shapeLabel: "Base Shape",
+        dataLabel: "Data:",
+        samplesLabel: "samples",
         shapeNames: ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron']
     }
 };
 
-function toggleLanguage() { 
-    currentLang = currentLang === 'KR' ? 'EN' : 'KR'; 
-    updateAllUIText(); 
+function toggleLanguage() {
+    appState.ui.lang = appState.ui.lang === 'KR' ? 'EN' : 'KR';
+    updateAllUIText();
 }
 
 function updateAllUIText() {
-    const t = translations[currentLang];
-    const langBtn = document.getElementById('lang-toggle'); if(langBtn) langBtn.innerText = currentLang === 'KR' ? 'EN' : 'KR';
+    const t = translations[appState.ui.lang];
+    const langBtn = document.getElementById('lang-toggle');
+    if (langBtn) langBtn.innerText = appState.ui.lang === 'KR' ? 'EN' : 'KR';
 
     const mapping = {
-        'title': t.title, 'btn-engine': t.btnEngine, 'btn-confirm': t.btnConfirm,
-        'btn-play': isPlaying ? t.btnPause : t.btnPlay, // Fix: Added Play button text
-        'btn-upload': t.btnUpload, 'btn-export': t.btnExport, 'btn-clear': t.btnClear,
-        'label-loud': t.labelLoud, 'label-pitch': t.labelPitch, 'label-bright': t.labelBright, 'label-rough': t.labelRough,
-        'y1-label': t.y1Label, 'y1-left': t.y1Left, 'y1-right': t.y1Right,
-        'y2-label': t.y2Label, 'y2-left': t.y2Left, 'y2-right': t.y2Right,
-        'y3-label': t.y3Label, 'y3-left': t.y3Left, 'y3-right': t.y3Right,
-        'y4-label': t.y4Label, 'y4-left': t.y4Left, 'y4-right': t.y4Right,
-        'shape-label': t.shapeLabel, 'data-label': t.dataLabel, 'samples-label': t.samplesLabel
+        'title': t.title,
+        'btn-engine': t.btnEngine,
+        'btn-confirm': t.btnConfirm,
+        'btn-play': appState.audio.isPlaying ? t.btnPause : t.btnPlay,
+        'btn-upload': t.btnUpload,
+        'btn-export': t.btnExport,
+        'btn-clear': t.btnClear,
+        'label-loud': t.labelLoud,
+        'label-pitch': t.labelPitch,
+        'label-bright': t.labelBright,
+        'label-rough': t.labelRough,
+        'y1-label': t.y1Label,
+        'y1-left': t.y1Left,
+        'y1-right': t.y1Right,
+        'y2-label': t.y2Label,
+        'y2-left': t.y2Left,
+        'y2-right': t.y2Right,
+        'y3-label': t.y3Label,
+        'y3-left': t.y3Left,
+        'y3-right': t.y3Right,
+        'y4-label': t.y4Label,
+        'y4-left': t.y4Left,
+        'y4-right': t.y4Right,
+        'shape-label': t.shapeLabel,
+        'data-label': t.dataLabel,
+        'samples-label': t.samplesLabel
     };
 
     for (let id in mapping) {
@@ -1062,30 +1454,51 @@ function updateAllUIText() {
 
     const mainBtn = document.getElementById('btn-main');
     if (mainBtn) {
-        if (state === 'IDLE') mainBtn.innerText = t.btnRecord;
-        else if (state === 'RECORDING') mainBtn.innerText = t.btnStop;
-        else if (state === 'REVIEWING') mainBtn.innerText = t.btnReRecord;
+        if (appState.ui.state === 'IDLE') mainBtn.innerText = t.btnRecord;
+        else if (appState.ui.state === 'RECORDING') mainBtn.innerText = t.btnStop;
+        else if (appState.ui.state === 'REVIEWING') mainBtn.innerText = t.btnReRecord;
     }
+
     updateShapeNameDisplay();
 }
 
 function updateShapeNameDisplay() {
-    const t = translations[currentLang];
-    const s = document.getElementById('shape-selector'); if(!s) return;
-    const n = document.getElementById('shape-name'); if(n) n.innerText = t.shapeNames[parseInt(s.value)];
+    const t = translations[appState.ui.lang];
+    const shapeSelector = document.getElementById('shape-selector');
+    if (!shapeSelector) return;
+    const shapeName = document.getElementById('shape-name');
+    if (shapeName) {
+        shapeName.innerText = t.shapeNames[parseInt(shapeSelector.value)];
+    }
 }
 
-function updateStatus(msg, cls) { 
-    const el = document.getElementById('status'); 
-    if(el) { el.innerText = msg; el.className = 'status-badge ' + cls; }
+function updateStatus(msg, cls) {
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+        statusEl.innerText = msg;
+        statusEl.className = 'status-badge ' + cls;
+    }
 }
 
-function changeShape(val) { updateShapeNameDisplay(); createShape(val); }
+function changeShape(val) {
+    updateShapeNameDisplay();
+    createShape(val);
+}
+
 function exportCSV() {
     let csv = "loudness,pitch,brightness,roughness,y1,y2,y3,y4,shape\n";
-    customTrainingData.forEach(d => { csv += `${d.x.loudness},${d.x.pitch},${d.x.brightness},${d.x.roughness},${d.y.join(',')}\n`; });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `IML_Data.csv`; a.click();
+    appState.ml.trainingData.forEach(d => {
+        csv += `${d.x.loudness},${d.x.pitch},${d.x.brightness},${d.x.roughness},${d.y.join(',')}\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = createTrackedObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'IML_Data.csv';
+    a.click();
 }
 
-window.addEventListener('DOMContentLoaded', () => { updateAllUIText(); });
+window.addEventListener('DOMContentLoaded', () => {
+    updateAllUIText();
+});
