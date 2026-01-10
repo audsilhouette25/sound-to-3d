@@ -709,7 +709,7 @@ function animate() {
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
     } else if (state === 'RECORDING') {
-        // During recording: Use AI prediction if trained data exists, otherwise use rule-based
+        // During recording: Use AI prediction if trained data exists, otherwise keep sphere
         if (customTrainingData.length > 0) {
             // Use AI prediction
             brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
@@ -723,10 +723,7 @@ function animate() {
             });
         } else {
             // No training data: Keep sphere shape and use rule-based parameters
-            if (currentY.shape !== 0) {
-                currentY.shape = 0;
-                createShape(0);
-            }
+            targetY.shape = 0;
             const suggestedParams = autoSuggestParameters(currentX);
             targetY.y1 = suggestedParams.y1;
             targetY.y2 = suggestedParams.y2;
@@ -734,7 +731,7 @@ function animate() {
             targetY.y4 = suggestedParams.y4;
         }
     } else if (state === 'IDLE') {
-        // IDLE state: Use AI prediction if trained data exists, otherwise keep sphere with rule-based params
+        // IDLE state: Use AI prediction if trained data exists, otherwise keep sphere
         if (customTrainingData.length > 0) {
             // Use AI prediction
             brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, results) => {
@@ -748,11 +745,7 @@ function animate() {
             });
         } else {
             // No training data: Keep sphere shape and use rule-based parameters
-            if (currentY.shape !== 0) {
-                currentY.shape = 0;
-                targetY.shape = 0;
-                createShape(0);
-            }
+            targetY.shape = 0;
             const suggestedParams = autoSuggestParameters(currentX);
             targetY.y1 = suggestedParams.y1;
             targetY.y2 = suggestedParams.y2;
