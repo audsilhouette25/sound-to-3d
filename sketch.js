@@ -80,8 +80,8 @@ let shaderUniforms = {
 
 // Audio normalization constants
 const LOUDNESS_NORMALIZER = 2.0;
-const PITCH_NORMALIZER = 1000.0;
-const BRIGHTNESS_NORMALIZER = 10000.0;
+const PITCH_NORMALIZER = 20.0;  // pitch is already divided by 50, max ~20
+const BRIGHTNESS_NORMALIZER = 24.0;  // brightness = pitch * 1.2, max ~24
 const ROUGHNESS_NORMALIZER = 1.0;
 
 const AUDIO_CONSTANTS = {
