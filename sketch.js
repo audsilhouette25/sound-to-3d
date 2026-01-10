@@ -192,20 +192,12 @@ const vertexShader = `
     void main() {
         vNormal = normal;
         vec3 pos = position;
-
-        // Mirror effect: opposite faces move in opposite directions
-        float mirrorX = sign(pos.x);
-        float mirrorY = sign(pos.y);
-        float mirrorZ = sign(pos.z);
-
         float noiseVal = noise(pos * (2.0 + uY4 * 8.0) + uTime * 0.4);
         float angular = floor(noiseVal * (1.0 + (1.0-uY1)*12.0)) / (1.0 + (1.0-uY1)*12.0);
         float finalNoise = mix(noiseVal, angular, uY1);
         float wave = sin(pos.x * 12.0 + uTime) * uY2 * 0.45;
 
-        float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
-        // Apply mirror effect on x and z axes (opposite faces move in opposite directions)
-        float displacement = baseDisplacement * mirrorX * mirrorZ;
+        float displacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
         vDisplacement = displacement;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
@@ -218,6 +210,47 @@ const fragmentShader = `
         vec3 colorB = vec3(0.1, 0.05, 0.4);
         vec3 finalColor = mix(colorB, colorA, vDisplacement + 0.25);
         gl_FragColor = vec4(finalColor, 0.9);
+    }
+`;
+
+// Cube-specific vertex shader with mirror effect
+const cubeVertexShader = `
+    varying float vDisplacement;
+    varying vec3 vNormal;
+    uniform float uTime;
+    uniform float uLoudness;
+    uniform float uY1, uY2, uY3, uY4;
+
+    float hash(float n) { return fract(sin(n) * 43758.5453123); }
+    float noise(vec3 x) {
+        vec3 p = floor(x); vec3 f = fract(x);
+        f = f*f*(3.0-2.0*f);
+        float n = p.x + p.y*57.0 + 113.0*p.z;
+        return mix(
+            mix(mix(hash(n+0.0), hash(n+1.0), f.x), mix(hash(n+57.0), hash(n+58.0), f.x), f.y),
+            mix(mix(hash(n+113.0), hash(n+114.0), f.x), mix(hash(n+170.0), hash(n+171.0), f.x), f.y),
+            f.z
+        );
+    }
+
+    void main() {
+        vNormal = normal;
+        vec3 pos = position;
+
+        // Mirror effect: opposite faces move in opposite directions
+        float mirrorX = sign(pos.x);
+        float mirrorZ = sign(pos.z);
+
+        float noiseVal = noise(pos * (2.0 + uY4 * 8.0) + uTime * 0.4);
+        float angular = floor(noiseVal * (1.0 + (1.0-uY1)*12.0)) / (1.0 + (1.0-uY1)*12.0);
+        float finalNoise = mix(noiseVal, angular, uY1);
+        float wave = sin(pos.x * 12.0 + uTime) * uY2 * 0.45;
+
+        float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
+        // Apply mirror effect: multiply by sign of x and z
+        float displacement = baseDisplacement * mirrorX * mirrorZ;
+        vDisplacement = abs(displacement);  // Use abs for color to avoid negative values
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
 `;
 
@@ -634,9 +667,10 @@ function createShape(type) {
         default: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
     }
 
+    // Use cube-specific shader for mirror effect on Cube only
     const mat = new THREE.ShaderMaterial({
         uniforms: appState.visuals.uniforms,
-        vertexShader,
+        vertexShader: type === 1 ? cubeVertexShader : vertexShader,
         fragmentShader,
         wireframe: true,
         transparent: true
