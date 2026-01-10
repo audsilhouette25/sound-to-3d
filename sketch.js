@@ -858,6 +858,9 @@ function saveRecording() {
             roughness: appState.audio.recorded.roughness * 0.3 + appState.audio.recorded.peakRoughness * 0.7
         };
 
+        // Store blended features for use in REVIEWING state
+        appState.audio.recorded = blendedFeatures;
+
         console.log('📝 Recorded audio features:', appState.audio.recorded);
         console.log('🔢 Blended features (avg 30% + peak 70%):', blendedFeatures, 'normalized:', normalizeAudioFeatures(blendedFeatures));
 
@@ -975,6 +978,9 @@ async function handleFileUpload(event) {
                     brightness: appState.audio.recorded.brightness * 0.3 + appState.audio.recorded.peakBrightness * 0.7,
                     roughness: appState.audio.recorded.roughness * 0.3 + appState.audio.recorded.peakRoughness * 0.7
                 };
+
+                // Store blended features for use in REVIEWING state
+                appState.audio.recorded = blendedFeatures;
 
                 console.log('File analysis complete:', appState.audio.recorded);
                 console.log('🔢 Blended features (avg 30% + peak 70%):', blendedFeatures, 'normalized:', normalizeAudioFeatures(blendedFeatures));
