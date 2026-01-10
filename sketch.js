@@ -237,19 +237,22 @@ const cubeVertexShader = `
         vNormal = normal;
         vec3 pos = position;
 
-        // Mirror effect: opposite faces move in opposite directions
-        float mirrorX = sign(pos.x);
-        float mirrorZ = sign(pos.z);
-
         float noiseVal = noise(pos * (2.0 + uY4 * 8.0) + uTime * 0.4);
         float angular = floor(noiseVal * (1.0 + (1.0-uY1)*12.0)) / (1.0 + (1.0-uY1)*12.0);
         float finalNoise = mix(noiseVal, angular, uY1);
         float wave = sin(pos.x * 12.0 + uTime) * uY2 * 0.45;
 
         float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
-        // Apply mirror effect: multiply by sign of x and z
-        float displacement = baseDisplacement * mirrorX * mirrorZ;
-        vDisplacement = abs(displacement);  // Use abs for color to avoid negative values
+
+        // Mirror effect: opposite faces move in opposite directions based on normal direction
+        // Use normal to determine which face, then apply mirror based on that axis
+        float mirror = 1.0;
+        if (abs(normal.x) > 0.5) mirror = sign(normal.x);  // Left/Right faces
+        else if (abs(normal.y) > 0.5) mirror = sign(normal.y);  // Top/Bottom faces
+        else if (abs(normal.z) > 0.5) mirror = sign(normal.z);  // Front/Back faces
+
+        float displacement = baseDisplacement * mirror;
+        vDisplacement = displacement;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos + normal * displacement, 1.0);
     }
 `;
