@@ -13,6 +13,10 @@ let customTrainingData = [];
 let currentLang = 'KR';
 let micStream = null;
 
+// API Configuration
+const API_URL = 'https://sound-to-3d-server.onrender.com'; // Will be updated after deployment
+const USE_SERVER = false; // Set to true after server is deployed
+
 // Rendering optimization variables (from main branch)
 let predictionFrameCounter = 0;
 let activePredictionId = 0;
@@ -857,26 +861,54 @@ function confirmTrainingWrapper() {
     });
 }
 
-function saveTrainingData() {
+async function saveTrainingData() {
     try {
+        // Always save to localStorage
         const dataToSave = JSON.stringify({ data: customTrainingData });
         localStorage.setItem('soundTo3D_data', dataToSave);
-        console.log('Training data saved:', customTrainingData.length, 'samples');
+        console.log('Training data saved to localStorage:', customTrainingData.length, 'samples');
+
+        // If server is enabled, also save to server
+        if (USE_SERVER) {
+            const lastData = customTrainingData[customTrainingData.length - 1];
+            const response = await fetch(`${API_URL}/api/data`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(lastData)
+            });
+            const result = await response.json();
+            console.log('Training data saved to server:', result.count, 'total samples');
+        }
     } catch (e) {
         console.error('Failed to save training data:', e);
-        alert('Failed to save data: ' + e.message);
+        // Don't alert on save failures, just log
     }
 }
-function loadTrainingData() {
-    const saved = localStorage.getItem('soundTo3D_data');
-    if (!saved) {
-        console.log('No saved training data found');
-        return;
-    }
+async function loadTrainingData() {
     try {
-        const obj = JSON.parse(saved);
-        customTrainingData = obj.data || [];
-        console.log('Training data loaded:', customTrainingData.length, 'samples');
+        // If server is enabled, load from server
+        if (USE_SERVER) {
+            const response = await fetch(`${API_URL}/api/data`);
+            const result = await response.json();
+            if (result.success && result.data.length > 0) {
+                customTrainingData = result.data;
+                console.log('Training data loaded from server:', customTrainingData.length, 'samples');
+
+                // Also save to localStorage for offline use
+                const dataToSave = JSON.stringify({ data: customTrainingData });
+                localStorage.setItem('soundTo3D_data', dataToSave);
+            }
+        } else {
+            // Load from localStorage
+            const saved = localStorage.getItem('soundTo3D_data');
+            if (!saved) {
+                console.log('No saved training data found');
+                return;
+            }
+            const obj = JSON.parse(saved);
+            customTrainingData = obj.data || [];
+            console.log('Training data loaded from localStorage:', customTrainingData.length, 'samples');
+        }
 
         const dc = document.getElementById('data-count');
         if (dc) dc.innerText = customTrainingData.length;
@@ -890,16 +922,35 @@ function loadTrainingData() {
         }
     } catch (e) {
         console.error('Failed to load training data:', e);
-        alert('Failed to load data: ' + e.message);
+        // Try localStorage as fallback
+        const saved = localStorage.getItem('soundTo3D_data');
+        if (saved) {
+            const obj = JSON.parse(saved);
+            customTrainingData = obj.data || [];
+            console.log('Fallback: Training data loaded from localStorage:', customTrainingData.length, 'samples');
+        }
     }
 }
 
-function clearAllData() {
+async function clearAllData() {
     const message = currentLang === 'KR' ? "정말로 모든 학습 데이터를 삭제하시겠습니까?" : "Are you sure you want to delete all training data?";
     if(confirm(message)) {
-        localStorage.removeItem('soundTo3D_data');
-        customTrainingData = [];
-        location.reload();
+        try {
+            // Clear localStorage
+            localStorage.removeItem('soundTo3D_data');
+            customTrainingData = [];
+
+            // If server is enabled, also clear server data
+            if (USE_SERVER) {
+                await fetch(`${API_URL}/api/data`, { method: 'DELETE' });
+                console.log('Server data cleared');
+            }
+
+            location.reload();
+        } catch (e) {
+            console.error('Failed to clear data:', e);
+            location.reload();
+        }
     }
 }
 

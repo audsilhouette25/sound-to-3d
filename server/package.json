@@ -1,0 +1,20 @@
+{
+  "name": "sound-to-3d-server",
+  "version": "1.0.0",
+  "description": "Backend server for sound-to-3d training data synchronization",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": ["ml5", "sound", "3d", "training"],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.2.1"
+  }
+}
