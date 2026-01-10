@@ -428,14 +428,33 @@ async function handleRecord() {
         
         try {
             if (!micStream) {
-                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                micStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        sampleRate: 48000
+                    }
+                });
                 microphone = audioCtx.createMediaStreamSource(micStream);
-                mediaRecorder = new MediaRecorder(micStream);
-                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+                // Use supported MIME type for better quality
+                let mimeType = 'audio/webm';
+                if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                    mimeType = 'audio/webm;codecs=opus';
+                }
+
+                mediaRecorder = new MediaRecorder(micStream, {
+                    mimeType: mimeType,
+                    audioBitsPerSecond: 128000
+                });
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
                 mediaRecorder.onstop = saveRecording;
             }
             microphone.connect(analyser);
-            mediaRecorder.start();
+            mediaRecorder.start(100); // Collect data every 100ms for smooth recording
             document.getElementById('btn-main').innerText = t.btnStop;
             updateStatus(t.statusRecording, 'status-recording');
             document.getElementById('labeling-zone').style.display = 'none';
@@ -456,7 +475,13 @@ async function handleRecord() {
 }
 
 function saveRecording() {
-    const blob = new Blob(audioChunks, { type: 'audio/wav' });
+    // Use the same MIME type that was used for recording
+    let mimeType = 'audio/webm';
+    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+    }
+
+    const blob = new Blob(audioChunks, { type: mimeType });
     audioTag = new Audio(URL.createObjectURL(blob));
     audioTag.loop = true;
     if(recordedX.count > 0) {
@@ -823,7 +848,7 @@ const translations = {
     KR: {
         title: "IML Research", btnEngine: "오디오 엔진 가동", btnRecord: "녹음 시작", btnStop: "중단", btnReRecord: "다시 녹음",
         btnPlay: "소리 재생", btnPause: "재생 중지", btnConfirm: "데이터 확정 및 학습", btnExport: "CSV 추출",
-        btnUpload: "파일 업로드",
+        btnUpload: "파일 업로드", btnClear: "모든 데이터 삭제",
         statusReady: "준비 완료", statusRecording: "녹음 중...", statusReviewing: "검토 및 라벨링",
         labelLoud: "음량", labelPitch: "음높이", labelBright: "밝기", labelRough: "거칠기",
         y1Label: "y1: 각짐", y1Left: "둥근", y1Right: "각진",
@@ -836,7 +861,7 @@ const translations = {
     EN: {
         title: "IML Research", btnEngine: "Start Engine", btnRecord: "Record", btnStop: "Stop", btnReRecord: "Re-record",
         btnPlay: "Play", btnPause: "Pause", btnConfirm: "Confirm & Train", btnExport: "Export CSV",
-        btnUpload: "Upload File",
+        btnUpload: "Upload File", btnClear: "Clear All Data",
         statusReady: "Ready", statusRecording: "Recording...", statusReviewing: "Reviewing...",
         labelLoud: "Loudness", labelPitch: "Pitch", labelBright: "Brightness", labelRough: "Roughness",
         y1Label: "y1: Angularity", y1Left: "Round", y1Right: "Angular",
@@ -860,7 +885,7 @@ function updateAllUIText() {
     const mapping = {
         'title': t.title, 'btn-engine': t.btnEngine, 'btn-confirm': t.btnConfirm,
         'btn-play': isPlaying ? t.btnPause : t.btnPlay, // Fix: Added Play button text
-        'btn-upload': t.btnUpload,
+        'btn-upload': t.btnUpload, 'btn-export': t.btnExport, 'btn-clear': t.btnClear,
         'label-loud': t.labelLoud, 'label-pitch': t.labelPitch, 'label-bright': t.labelBright, 'label-rough': t.labelRough,
         'y1-label': t.y1Label, 'y1-left': t.y1Left, 'y1-right': t.y1Right,
         'y2-label': t.y2Label, 'y2-left': t.y2Left, 'y2-right': t.y2Right,
