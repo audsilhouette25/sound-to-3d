@@ -722,8 +722,8 @@ function animate() {
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
     } else if (state === 'RECORDING') {
-        // During recording: Use AI prediction if trained data exists, otherwise keep sphere
-        if (customTrainingData.length > 0) {
+        // During recording: Use AI prediction if brain is trained, otherwise keep sphere
+        if (isBrainTrained && customTrainingData.length > 0) {
             // Use AI prediction every 5 frames to reduce load
             predictionFrameCounter++;
             if (predictionFrameCounter >= PREDICTION_INTERVAL) {
@@ -739,7 +739,7 @@ function animate() {
                 });
             }
         } else {
-            // No training data: Keep sphere shape and use rule-based parameters
+            // No training data or not trained yet: Keep sphere shape and use rule-based parameters
             targetY.shape = 0;
             const suggestedParams = autoSuggestParameters(currentX);
             targetY.y1 = suggestedParams.y1;
@@ -796,8 +796,15 @@ function animate() {
         shaderUniforms[`u${k.toUpperCase()}`].value = currentY[k];
     }
 
-    if (currentMesh) currentMesh.rotation.y += 0.005;
-    if (renderer) renderer.render(scene, camera);
+    if (currentMesh) {
+        currentMesh.rotation.y += 0.005;
+    }
+
+    if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+    } else if (!renderer) {
+        console.error('❌ Renderer is null in animate()');
+    }
 }
 
 function analyzeAudio() {
@@ -887,13 +894,19 @@ function confirmTrainingWrapper() {
 
     setTimeout(() => {
         console.log('🎓 Starting training in background...');
+        console.log('Current state:', state);
+        console.log('Renderer exists:', !!renderer);
+        console.log('Current mesh exists:', !!currentMesh);
+
         brain.train({ epochs: 50 }, () => {
             isBrainTrained = true;
             console.log('✅ Training complete! AI mode enabled.');
+            console.log('State after training:', state);
 
             // Hide training overlay
             if (overlay) {
                 overlay.style.display = 'none';
+                console.log('✅ Training overlay hidden');
             }
         });
     }, 500);
