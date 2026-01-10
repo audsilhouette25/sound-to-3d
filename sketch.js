@@ -686,7 +686,7 @@ function createShape(type) {
 
     switch (type) {
         case 0: geo = new THREE.SphereGeometry(1, 128, 128); break;  // Smooth sphere
-        case 1: geo = createConnectedCube(1.0, 1.8, 1.0, CONSTANTS.CUBE_SUBDIVISIONS); break;  // Tall rectangular prism (width, height, depth)
+        case 1: geo = createConnectedCube(1.4, 1.4, 1.4, CONSTANTS.CUBE_SUBDIVISIONS); break;  // Regular cube
         case 2: geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128); break;
         case 3: geo = new THREE.ConeGeometry(1, 2, 64, 64); break;
         default: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
@@ -694,7 +694,7 @@ function createShape(type) {
 
     const mat = new THREE.ShaderMaterial({
         uniforms: appState.visuals.uniforms,
-        vertexShader: type === 1 ? cubeVertexShader : vertexShader,
+        vertexShader,  // Use standard shader for all shapes
         fragmentShader,
         wireframe: true,
         transparent: true
