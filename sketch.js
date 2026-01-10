@@ -679,45 +679,6 @@ function animate() {
         targetY.y2 = suggestedParams.y2;
         targetY.y3 = suggestedParams.y3;
         targetY.y4 = suggestedParams.y4;
-    } else if (customTrainingData.length >= 3) {
-        // AI prediction mode (when training data exists)
-        // Throttle: 5프레임마다 1번만 실행
-        predictionFrameCounter++;
-        if (predictionFrameCounter >= PREDICTION_INTERVAL) {
-            predictionFrameCounter = 0;
-
-            // Race condition 방지: 예측 ID로 오래된 결과 무시
-            const currentPredictionId = ++activePredictionId;
-            const features = [currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness];
-
-            brain.predict(features, (err, res) => {
-                // 새로운 예측이 이미 시작되었으면 이 결과 무시
-                if (currentPredictionId !== activePredictionId) return;
-
-                if (err) {
-                    console.error('⚠️ Brain prediction error:', err);
-                    return;
-                }
-
-                if (!res || res.length < 5) {
-                    console.warn('⚠️ Invalid prediction result - expected 5 outputs, got:', res ? res.length : 'null');
-                    return;
-                }
-
-                // NaN 검증: 유효한 값만 적용
-                const y1 = res[0].value;
-                const y2 = res[1].value;
-                const y3 = res[2].value;
-                const y4 = res[3].value;
-                const shape = res[4].value;
-
-                if (!isNaN(y1)) targetY.y1 = y1;
-                if (!isNaN(y2)) targetY.y2 = y2;
-                if (!isNaN(y3)) targetY.y3 = y3;
-                if (!isNaN(y4)) targetY.y4 = y4;
-                if (!isNaN(shape)) targetY.shape = shape;
-            });
-        }
     } else if (state === 'IDLE') {
         // IDLE state: Keep sphere shape, use default parameters
         if (currentY.shape !== 0) {
