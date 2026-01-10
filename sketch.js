@@ -13,7 +13,7 @@ let customTrainingData = [];
 let currentLang = 'KR';
 let micStream = null;
 
-// --- GPU Shader Code ---
+// --- GPU Shader Code (Fixed Noise Function) ---
 const vertexShader = `
     varying float vDisplacement;
     varying vec3 vNormal;
@@ -26,8 +26,12 @@ const vertexShader = `
         vec3 p = floor(x); vec3 f = fract(x);
         f = f*f*(3.0-2.0*f);
         float n = p.x + p.y*57.0 + 113.0*p.z;
-        return mix(mix(mix(hash(n+0.0), hash(n+1.0),f.x), mix(hash(n+57.0), hash(n+58.0),f.x),f.y),
-                   mix(mix(mix(hash(n+113.0),hash(n+114.0),f.x), mix(hash(n+170.0),hash(n+171.0),f.x),f.y),f.z);
+        // Fixed: Corrected 3D noise mix logic
+        return mix(
+            mix(mix(hash(n+0.0), hash(n+1.0), f.x), mix(hash(n+57.0), hash(n+58.0), f.x), f.y),
+            mix(mix(hash(n+113.0), hash(n+114.0), f.x), mix(hash(n+170.0), hash(n+171.0), f.x), f.y),
+            f.z
+        );
     }
 
     void main() {
@@ -59,31 +63,41 @@ let shaderUniforms = {
     uY1: { value: 0.5 }, uY2: { value: 0.5 }, uY3: { value: 0.5 }, uY4: { value: 0.5 }
 };
 
-// --- 3D Initialization (Fix: Container Check & Position) ---
+// --- 3D Initialization ---
 function initThree() {
     scene = new THREE.Scene();
-    
-    // UI 너비(320px)를 제외한 나머지 영역 계산
+    scene.background = new THREE.Color(0x050505);
+
     const rightPanelWidth = window.innerWidth - 320;
     camera = new THREE.PerspectiveCamera(75, rightPanelWidth / window.innerHeight, 0.1, 1000);
     camera.position.z = 3.5;
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(rightPanelWidth, window.innerHeight);
-    
-    // [중요] 캔버스를 화면 우측에 고정 배치하여 UI와 겹치지 않게 함
     renderer.domElement.style.position = 'absolute';
     renderer.domElement.style.top = '0';
     renderer.domElement.style.left = '320px';
     renderer.domElement.style.zIndex = '1';
     document.body.appendChild(renderer.domElement);
 
+    window.addEventListener('resize', onWindowResize);
     createShape(0);
     animate();
 }
 
+function onWindowResize() {
+    const rightPanelWidth = window.innerWidth - 320;
+    camera.aspect = rightPanelWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(rightPanelWidth, window.innerHeight);
+}
+
 function createShape(type) {
-    if (currentMesh) { scene.remove(currentMesh); if(currentMesh.geometry) currentMesh.geometry.dispose(); }
+    if (currentMesh) { 
+        scene.remove(currentMesh); 
+        if(currentMesh.geometry) currentMesh.geometry.dispose(); 
+        if(currentMesh.material) currentMesh.material.dispose();
+    }
     let geo;
     type = parseInt(type);
     if (type === 0) geo = new THREE.SphereGeometry(1, 128, 128);
@@ -104,12 +118,10 @@ function createShape(type) {
     scene.add(currentMesh);
 }
 
-// --- Audio & ML Engine ---
+// --- Audio & ML ---
 async function initEngine() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    // 브라우저 정책상 사용자 상호작용 후 resume 필요
     if (audioCtx.state === 'suspended') await audioCtx.resume();
-
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 2048;
 
@@ -119,14 +131,9 @@ async function initEngine() {
         task: 'regression', debug: false
     });
 
-    const btnEngine = document.getElementById('btn-engine');
-    if(btnEngine) btnEngine.style.display = 'none';
-    
-    const btnMain = document.getElementById('btn-main');
-    if(btnMain) btnMain.style.display = 'block';
-    
-    const saveZone = document.getElementById('save-load-zone');
-    if(saveZone) saveZone.style.display = 'block';
+    document.getElementById('btn-engine').style.display = 'none';
+    document.getElementById('btn-main').style.display = 'block';
+    document.getElementById('save-load-zone').style.display = 'block';
     
     loadTrainingData();
     initThree();
@@ -134,7 +141,6 @@ async function initEngine() {
     updateStatus(translations[currentLang].statusReady, 'status-idle');
 }
 
-// --- Main Workflow ---
 async function handleRecord() {
     const t = translations[currentLang];
     if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
@@ -156,15 +162,19 @@ async function handleRecord() {
             mediaRecorder.start();
             document.getElementById('btn-main').innerText = t.btnStop;
             updateStatus(t.statusRecording, 'status-recording');
-        } catch (err) { alert('마이크 접근 권한이 필요합니다.'); state = 'IDLE'; }
+            document.getElementById('labeling-zone').style.display = 'none';
+        } catch (err) { alert('마이크 권한이 필요합니다.'); state = 'IDLE'; }
     } else {
         mediaRecorder.stop();
         state = 'REVIEWING';
         if (microphone) microphone.disconnect();
+        
         document.getElementById('labeling-zone').style.display = 'block';
         document.getElementById('btn-play').style.display = 'block';
         document.getElementById('btn-confirm').style.display = 'block';
-        document.getElementById('btn-main').innerText = t.btnReRecord;
+        
+        // 텍스트 강제 갱신 (Play 버튼 등)
+        updateAllUIText();
         updateStatus(t.statusReviewing, 'status-review');
     }
 }
@@ -199,7 +209,6 @@ function togglePlayback() {
     }
 }
 
-// --- Animation Loop ---
 function animate() {
     requestAnimationFrame(animate);
     if (!analyser) return;
@@ -231,7 +240,6 @@ function animate() {
         });
     }
 
-    // Smooth transition
     for(let k of ['y1', 'y2', 'y3', 'y4']) {
         currentY[k] += (targetY[k] - currentY[k]) * 0.1;
         shaderUniforms[`u${k.toUpperCase()}`].value = currentY[k];
@@ -242,15 +250,14 @@ function animate() {
 }
 
 function analyzeAudio() {
-    if (!analyser) return;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const time = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data); 
+    analyser.getByteTimeDomainData(time);
+    
     if (state === 'REVIEWING' && !isPlaying) {
         currentX = {...recordedX};
     } else {
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        const time = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(data); 
-        analyser.getByteTimeDomainData(time);
-        
         let sum = 0; 
         for(let v of time) { let n=(v-128)/128; sum+=n*n; }
         currentX.loudness = Math.sqrt(sum/time.length) * 10.0;
@@ -272,17 +279,12 @@ function analyzeAudio() {
             recordedX.count++;
         }
     }
-    const valLoud = document.getElementById('val-loud');
-    if(valLoud) valLoud.innerText = currentX.loudness.toFixed(2);
-    const valPitch = document.getElementById('val-pitch');
-    if(valPitch) valPitch.innerText = currentX.pitch.toFixed(2);
-    const valBright = document.getElementById('val-bright');
-    if(valBright) valBright.innerText = currentX.brightness.toFixed(2);
-    const valRough = document.getElementById('val-rough');
-    if(valRough) valRough.innerText = currentX.roughness.toFixed(2);
+    const l = document.getElementById('val-loud'); if(l) l.innerText = currentX.loudness.toFixed(2);
+    const p = document.getElementById('val-pitch'); if(p) p.innerText = currentX.pitch.toFixed(2);
+    const b = document.getElementById('val-bright'); if(b) b.innerText = currentX.brightness.toFixed(2);
+    const r = document.getElementById('val-rough'); if(r) r.innerText = currentX.roughness.toFixed(2);
 }
 
-// --- Training & Save ---
 function confirmTrainingWrapper() {
     const labels = [
         parseFloat(document.getElementById('y1').value), 
@@ -296,13 +298,10 @@ function confirmTrainingWrapper() {
     saveTrainingData();
     
     updateStatus("학습 중...", "status-recording");
-    
     brain.normalizeData();
     brain.train({ epochs: 50 }, () => {
-        alert(currentLang === 'KR' ? "학습 완료! 이제 실시간 예측 모드입니다." : "Training complete! Predictive mode active.");
-        const dataCount = document.getElementById('data-count');
-        if(dataCount) dataCount.innerText = customTrainingData.length;
-        
+        alert(currentLang === 'KR' ? "학습 완료! 실시간 모드" : "Training Done! Real-time mode.");
+        const dc = document.getElementById('data-count'); if(dc) dc.innerText = customTrainingData.length;
         state = 'IDLE'; 
         document.getElementById('labeling-zone').style.display = 'none';
         document.getElementById('btn-play').style.display = 'none';
@@ -312,33 +311,22 @@ function confirmTrainingWrapper() {
     });
 }
 
-function saveTrainingData() {
-    localStorage.setItem('soundTo3D_trainingData', JSON.stringify({ data: customTrainingData }));
-}
-
+function saveTrainingData() { localStorage.setItem('soundTo3D_data', JSON.stringify({ data: customTrainingData })); }
 function loadTrainingData() {
-    const saved = localStorage.getItem('soundTo3D_trainingData');
+    const saved = localStorage.getItem('soundTo3D_data');
     if (!saved) return;
     try {
-        const saveObj = JSON.parse(saved);
-        customTrainingData = saveObj.data || [];
-        const dataCount = document.getElementById('data-count');
-        if(dataCount) dataCount.innerText = customTrainingData.length;
+        const obj = JSON.parse(saved); customTrainingData = obj.data || [];
+        const dc = document.getElementById('data-count'); if(dc) dc.innerText = customTrainingData.length;
         if (brain && customTrainingData.length > 0) {
-            customTrainingData.forEach(item => {
-                brain.addData([item.x.loudness, item.x.pitch, item.x.brightness, item.x.roughness], item.y);
-            });
-            brain.normalizeData();
-            brain.train({ epochs: 10 }, () => console.log('Model ready.'));
+            customTrainingData.forEach(i => brain.addData([i.x.loudness, i.x.pitch, i.x.brightness, i.x.roughness], i.y));
+            brain.normalizeData(); brain.train({ epochs: 10 });
         }
     } catch (e) { console.error(e); }
 }
 
 function clearAllData() {
-    if(confirm(currentLang === 'KR' ? "모든 데이터를 삭제하시겠습니까?" : "Clear all training data?")) {
-        localStorage.removeItem('soundTo3D_trainingData');
-        location.reload();
-    }
+    if(confirm("데이터 삭제?")) { localStorage.removeItem('soundTo3D_data'); location.reload(); }
 }
 
 // --- UI & Translation ---
@@ -352,7 +340,7 @@ const translations = {
         y2Label: "y2: 뾰족함", y2Left: "부드러운", y2Right: "뾰족한",
         y3Label: "y3: 거칠기", y3Left: "매끈한", y3Right: "거친",
         y4Label: "y4: 복잡도", y4Left: "단순", y4Right: "복잡",
-        shapeLabel: "기본 형태", dataLabel: "학습 데이터:", samplesLabel: "개", labelingInstruction: "소리에 어울리는 형태를 조절하세요",
+        shapeLabel: "기본 형태", dataLabel: "학습 데이터:", samplesLabel: "개",
         shapeNames: ['구', '정육면체', '토러스', '원뿔', '원기둥', '팔면체']
     },
     EN: {
@@ -364,7 +352,7 @@ const translations = {
         y2Label: "y2: Spikiness", y2Left: "Smooth", y2Right: "Spiky",
         y3Label: "y3: Texture", y3Left: "Sleek", y3Right: "Rough",
         y4Label: "y4: Density", y4Left: "Simple", y4Right: "Complex",
-        shapeLabel: "Base Shape", dataLabel: "Data:", samplesLabel: "samples", labelingInstruction: "Adjust visual to match sound",
+        shapeLabel: "Base Shape", dataLabel: "Data:", samplesLabel: "samples",
         shapeNames: ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron']
     }
 };
@@ -376,11 +364,11 @@ function toggleLanguage() {
 
 function updateAllUIText() {
     const t = translations[currentLang];
-    const langBtn = document.getElementById('lang-toggle');
-    if(langBtn) langBtn.innerText = currentLang === 'KR' ? 'EN' : 'KR';
+    const langBtn = document.getElementById('lang-toggle'); if(langBtn) langBtn.innerText = currentLang === 'KR' ? 'EN' : 'KR';
 
     const mapping = {
         'title': t.title, 'btn-engine': t.btnEngine, 'btn-confirm': t.btnConfirm,
+        'btn-play': isPlaying ? t.btnPause : t.btnPlay, // Fix: Added Play button text
         'label-loud': t.labelLoud, 'label-pitch': t.labelPitch, 'label-bright': t.labelBright, 'label-rough': t.labelRough,
         'y1-label': t.y1Label, 'y1-left': t.y1Left, 'y1-right': t.y1Right,
         'y2-label': t.y2Label, 'y2-left': t.y2Left, 'y2-right': t.y2Right,
@@ -405,11 +393,8 @@ function updateAllUIText() {
 
 function updateShapeNameDisplay() {
     const t = translations[currentLang];
-    const selector = document.getElementById('shape-selector');
-    if(!selector) return;
-    const val = selector.value;
-    const nameEl = document.getElementById('shape-name');
-    if(nameEl) nameEl.innerText = t.shapeNames[parseInt(val)];
+    const s = document.getElementById('shape-selector'); if(!s) return;
+    const n = document.getElementById('shape-name'); if(n) n.innerText = t.shapeNames[parseInt(s.value)];
 }
 
 function updateStatus(msg, cls) { 
@@ -417,22 +402,12 @@ function updateStatus(msg, cls) {
     if(el) { el.innerText = msg; el.className = 'status-badge ' + cls; }
 }
 
-function changeShape(val) { 
-    updateShapeNameDisplay();
-    createShape(val); 
-}
-
+function changeShape(val) { updateShapeNameDisplay(); createShape(val); }
 function exportCSV() {
     let csv = "loudness,pitch,brightness,roughness,y1,y2,y3,y4,shape\n";
-    customTrainingData.forEach(d => { 
-        csv += `${d.x.loudness},${d.x.pitch},${d.x.brightness},${d.x.roughness},${d.y.join(',')}\n`; 
-    });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `IML_Data.csv`; 
-    a.click();
+    customTrainingData.forEach(d => { csv += `${d.x.loudness},${d.x.pitch},${d.x.brightness},${d.x.roughness},${d.y.join(',')}\n`; });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `IML_Data.csv`; a.click();
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-    updateAllUIText();
-});
+window.addEventListener('DOMContentLoaded', () => { updateAllUIText(); });
