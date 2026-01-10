@@ -78,6 +78,93 @@ let shaderUniforms = {
     uY1: { value: 0.5 }, uY2: { value: 0.5 }, uY3: { value: 0.5 }, uY4: { value: 0.5 }
 };
 
+// Audio normalization constants
+const AUDIO_CONSTANTS = {
+    LOUDNESS_NORMALIZER: 2.0
+};
+
+const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron'];
+
+// Auto-classify shape based on audio features (from main branch)
+function autoClassifyShape(loudness, pitch, brightness, roughness) {
+    // Input validation
+    if (typeof loudness !== 'number' || isNaN(loudness) ||
+        typeof pitch !== 'number' || isNaN(pitch) ||
+        typeof brightness !== 'number' || isNaN(brightness) ||
+        typeof roughness !== 'number' || isNaN(roughness)) {
+        console.error('Invalid input to autoClassifyShape:', { loudness, pitch, brightness, roughness });
+        return 0; // Default to sphere
+    }
+
+    // Normalize values (0-1 range)
+    const normalizedLoudness = Math.min(1, Math.max(0, loudness / AUDIO_CONSTANTS.LOUDNESS_NORMALIZER));
+    const normalizedPitch = Math.min(1, Math.max(0, pitch));
+    const normalizedBrightness = Math.min(1, Math.max(0, brightness));
+    const normalizedRoughness = Math.min(1, Math.max(0, roughness));
+
+    console.log('🎵 Audio features:', {
+        loudness: loudness.toFixed(3),
+        pitch: pitch.toFixed(3),
+        brightness: brightness.toFixed(3),
+        roughness: roughness.toFixed(3),
+        normalized: {
+            loudness: normalizedLoudness.toFixed(3),
+            pitch: normalizedPitch.toFixed(3),
+            brightness: normalizedBrightness.toFixed(3),
+            roughness: normalizedRoughness.toFixed(3)
+        }
+    });
+
+    // Classification logic:
+    // - Sphere (0): smooth, uniform sound (low roughness, medium pitch)
+    // - Cube (1): angular, clear sound (high brightness, medium roughness)
+    // - Torus (2): rotating feel (medium-high pitch, varying)
+    // - Cone (3): sharp, pointed sound (high pitch, high brightness)
+    // - Cylinder (4): consistent, continuous sound (low roughness, steady pitch)
+    // - Octahedron (5): complex, irregular sound (high roughness, lots of variation)
+
+    const scores = [0, 0, 0, 0, 0, 0];
+
+    // Sphere: smooth and mid-range
+    scores[0] = (1 - normalizedRoughness) * 0.4 +
+                (normalizedPitch > 0.3 && normalizedPitch < 0.7 ? 0.6 : 0);
+
+    // Cube: bright and moderately rough
+    scores[1] = normalizedBrightness * 0.5 +
+                (normalizedRoughness > 0.3 && normalizedRoughness < 0.7 ? 0.5 : 0);
+
+    // Torus: medium-high pitch, rotating feel
+    scores[2] = (normalizedPitch > 0.5 ? 0.6 : 0.2) +
+                normalizedLoudness * 0.4;
+
+    // Cone: high and sharp
+    scores[3] = (normalizedPitch > 0.6 ? 0.5 : 0) +
+                (normalizedBrightness > 0.6 ? 0.5 : 0);
+
+    // Cylinder: consistent and continuous
+    scores[4] = (1 - normalizedRoughness) * 0.5 +
+                (normalizedLoudness > 0.3 ? 0.5 : 0);
+
+    // Octahedron: complex and rough
+    scores[5] = normalizedRoughness * 0.6 +
+                (normalizedBrightness > 0.5 ? 0.4 : 0.2);
+
+    console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
+
+    // Return shape with highest score
+    let maxScore = -1;
+    let bestShape = 0;
+    for (let i = 0; i < 6; i++) {
+        if (scores[i] > maxScore) {
+            maxScore = scores[i];
+            bestShape = i;
+        }
+    }
+
+    console.log(`✅ Selected: ${SHAPE_NAMES[bestShape]} (score: ${maxScore.toFixed(3)})`);
+    return bestShape;
+}
+
 // --- 3D Initialization ---
 function initThree() {
     scene = new THREE.Scene();
@@ -348,6 +435,27 @@ function saveRecording() {
         recordedX.pitch /= recordedX.count;
         recordedX.brightness /= recordedX.count;
         recordedX.roughness /= recordedX.count;
+
+        // Auto-classify shape based on recorded audio features
+        const autoShape = autoClassifyShape(
+            recordedX.loudness,
+            recordedX.pitch,
+            recordedX.brightness,
+            recordedX.roughness
+        );
+
+        // Set shape selector to auto-classified shape
+        const shapeSelector = document.getElementById('shape-selector');
+        if (shapeSelector) {
+            shapeSelector.value = autoShape;
+            targetY.shape = autoShape;
+            currentY.shape = autoShape;
+            previousShape = -1; // Force shape update
+            createShape(autoShape);
+            updateShapeNameDisplay();
+        }
+
+        console.log('🎯 Auto-classified shape for recording:', SHAPE_NAMES[autoShape]);
     }
 }
 
@@ -450,6 +558,27 @@ async function handleFileUpload(event) {
                 }
 
                 console.log('File analysis complete:', recordedX);
+
+                // Auto-classify shape based on uploaded file audio features
+                const autoShape = autoClassifyShape(
+                    recordedX.loudness,
+                    recordedX.pitch,
+                    recordedX.brightness,
+                    recordedX.roughness
+                );
+
+                // Set shape selector to auto-classified shape
+                const shapeSelector = document.getElementById('shape-selector');
+                if (shapeSelector) {
+                    shapeSelector.value = autoShape;
+                    targetY.shape = autoShape;
+                    currentY.shape = autoShape;
+                    previousShape = -1; // Force shape update
+                    createShape(autoShape);
+                    updateShapeNameDisplay();
+                }
+
+                console.log('🎯 Auto-classified shape for uploaded file:', SHAPE_NAMES[autoShape]);
 
                 // Pause after analysis
                 audioTag.pause();
