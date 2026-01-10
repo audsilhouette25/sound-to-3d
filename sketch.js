@@ -246,13 +246,23 @@ const cubeVertexShader = `
 
         float baseDisplacement = (finalNoise * uY3 * 0.7) + (uLoudness * 0.6) + wave;
 
-        // Determine which axis based on normal direction
+        // Determine mirror based on normal direction (not position)
+        // This ensures opposite faces move in opposite directions
         float mirror = 1.0;
-        if (abs(normal.x) > 0.3) mirror = sign(pos.x);  // Left (-x) and Right (+x) faces
-        else if (abs(normal.y) > 0.3) mirror = sign(pos.y);  // Bottom (-y) and Top (+y) faces
-        else if (abs(normal.z) > 0.3) mirror = sign(pos.z);  // Back (-z) and Front (+z) faces
+        vec3 absNormal = abs(normal);
 
-        // Apply mirror: +face gets +displacement, -face gets -displacement
+        if (absNormal.x > absNormal.y && absNormal.x > absNormal.z) {
+            // X-axis dominant (left/right faces)
+            mirror = sign(normal.x);
+        } else if (absNormal.y > absNormal.x && absNormal.y > absNormal.z) {
+            // Y-axis dominant (top/bottom faces)
+            mirror = sign(normal.y);
+        } else {
+            // Z-axis dominant (front/back faces)
+            mirror = sign(normal.z);
+        }
+
+        // Apply mirror: +normal face gets +displacement, -normal face gets -displacement
         float displacement = baseDisplacement * mirror;
         // Use baseDisplacement for color to get proper gradient from inner (dark) to outer (bright)
         vDisplacement = baseDisplacement;
@@ -684,7 +694,7 @@ function createShape(type) {
 
     const mat = new THREE.ShaderMaterial({
         uniforms: appState.visuals.uniforms,
-        vertexShader,  // Use same shader for all shapes including Cube
+        vertexShader: type === 1 ? cubeVertexShader : vertexShader,
         fragmentShader,
         wireframe: true,
         transparent: true
