@@ -397,30 +397,47 @@ function updateTargetVisuals() {
         appState.visuals.target.y4 = parseFloat(elements.y4.value);
         appState.visuals.target.shape = parseInt(elements.shapeSelector.value);
     } else if (state === 'RECORDING' || state === 'IDLE') {
-        // Use AI prediction if trained, otherwise rule-based
+        // Always get rule-based suggestions
+        const ruleBased = {
+            shape: autoClassifyShape(appState.audio.features),
+            params: autoSuggestParameters(appState.audio.features)
+        };
+
         if (appState.ml.isTrained && appState.ml.trainingData.length > 0) {
-            // Throttle predictions
+            // Hybrid mode: Blend AI prediction with rule-based algorithm
             appState.visuals.predictionFrameCounter++;
             if (appState.visuals.predictionFrameCounter >= CONSTANTS.PREDICTION_INTERVAL) {
                 appState.visuals.predictionFrameCounter = 0;
                 performAIPrediction(appState.audio.features, (prediction) => {
                     if (prediction) {
-                        appState.visuals.target.y1 = prediction.y1;
-                        appState.visuals.target.y2 = prediction.y2;
-                        appState.visuals.target.y3 = prediction.y3;
-                        appState.visuals.target.y4 = prediction.y4;
+                        // Blend AI (70%) with rule-based (30%) for smoother results
+                        const AI_WEIGHT = 0.7;
+                        const RULE_WEIGHT = 0.3;
+
+                        appState.visuals.target.y1 = prediction.y1 * AI_WEIGHT + ruleBased.params.y1 * RULE_WEIGHT;
+                        appState.visuals.target.y2 = prediction.y2 * AI_WEIGHT + ruleBased.params.y2 * RULE_WEIGHT;
+                        appState.visuals.target.y3 = prediction.y3 * AI_WEIGHT + ruleBased.params.y3 * RULE_WEIGHT;
+                        appState.visuals.target.y4 = prediction.y4 * AI_WEIGHT + ruleBased.params.y4 * RULE_WEIGHT;
+
+                        // Use AI shape but fallback to rule-based if AI is uncertain
                         appState.visuals.target.shape = prediction.shape;
+                    } else {
+                        // Fallback to pure rule-based if AI prediction fails
+                        appState.visuals.target.shape = ruleBased.shape;
+                        appState.visuals.target.y1 = ruleBased.params.y1;
+                        appState.visuals.target.y2 = ruleBased.params.y2;
+                        appState.visuals.target.y3 = ruleBased.params.y3;
+                        appState.visuals.target.y4 = ruleBased.params.y4;
                     }
                 });
             }
         } else {
-            // Rule-based: Keep sphere and suggest parameters
-            appState.visuals.target.shape = 0;
-            const suggested = autoSuggestParameters(appState.audio.features);
-            appState.visuals.target.y1 = suggested.y1;
-            appState.visuals.target.y2 = suggested.y2;
-            appState.visuals.target.y3 = suggested.y3;
-            appState.visuals.target.y4 = suggested.y4;
+            // Pure rule-based when no training data
+            appState.visuals.target.shape = ruleBased.shape;
+            appState.visuals.target.y1 = ruleBased.params.y1;
+            appState.visuals.target.y2 = ruleBased.params.y2;
+            appState.visuals.target.y3 = ruleBased.params.y3;
+            appState.visuals.target.y4 = ruleBased.params.y4;
         }
     }
 }
