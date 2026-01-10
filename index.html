@@ -28,6 +28,8 @@
         </div>
 
         <button id="btn-main" onclick="handleRecord()" style="display:none; margin-top:15px;"></button>
+        <button id="btn-upload" onclick="document.getElementById('file-input').click()" style="display:none; margin-top:10px;"></button>
+        <input type="file" id="file-input" accept="audio/*" style="display:none;" onchange="handleFileUpload(event)">
         <button id="btn-play" onclick="togglePlayback()" style="display:none;"></button>
 
         <div id="labeling-zone" style="display:none; margin-top:20px;">

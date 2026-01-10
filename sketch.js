@@ -3,8 +3,8 @@ let audioChunks = [];
 let audioTag = null;
 let brain;
 let scene, camera, renderer, currentMesh;
-let state = 'IDLE'; 
-let isPlaying = false; 
+let state = 'IDLE';
+let isPlaying = false;
 let recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
 let currentX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
 let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
@@ -12,6 +12,21 @@ let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let customTrainingData = [];
 let currentLang = 'KR';
 let micStream = null;
+
+// Rendering optimization variables (from main branch)
+let predictionFrameCounter = 0;
+let activePredictionId = 0;
+const PREDICTION_INTERVAL = 5; // 5프레임마다 1번 예측 (60fps → 12 predictions/sec)
+let previousShape = -1;
+
+const RENDER_CONSTANTS = {
+    CAMERA_FOV: 75,
+    CAMERA_NEAR: 0.1,
+    CAMERA_FAR: 1000,
+    CAMERA_DISTANCE: 3.5,
+    LERP_SPEED_REVIEWING: 0.3,
+    LERP_SPEED_LIVE: 0.1
+};
 
 // --- GPU Shader Code (Fixed Noise Function) ---
 const vertexShader = `
@@ -133,6 +148,7 @@ async function initEngine() {
 
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
+    document.getElementById('btn-upload').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
     
     loadTrainingData();
@@ -184,10 +200,135 @@ function saveRecording() {
     audioTag = new Audio(URL.createObjectURL(blob));
     audioTag.loop = true;
     if(recordedX.count > 0) {
-        recordedX.loudness /= recordedX.count; 
+        recordedX.loudness /= recordedX.count;
         recordedX.pitch /= recordedX.count;
-        recordedX.brightness /= recordedX.count; 
+        recordedX.brightness /= recordedX.count;
         recordedX.roughness /= recordedX.count;
+    }
+}
+
+async function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const t = translations[currentLang];
+
+    try {
+        // Clean up previous audio
+        if (audioTag) {
+            audioTag.pause();
+            audioTag = null;
+        }
+        if (sourceNode) {
+            sourceNode.disconnect();
+            sourceNode = null;
+        }
+
+        // Load the uploaded file
+        const fileURL = URL.createObjectURL(file);
+        audioTag = new Audio(fileURL);
+        audioTag.loop = true;
+
+        // Wait for the audio to load metadata
+        await new Promise((resolve, reject) => {
+            audioTag.onloadedmetadata = resolve;
+            audioTag.onerror = reject;
+        });
+
+        // Analyze the uploaded audio file
+        console.log('Analyzing uploaded file:', file.name);
+
+        // Reset recorded values
+        recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
+
+        // Create source node and connect to analyser
+        sourceNode = audioCtx.createMediaElementSource(audioTag);
+        sourceNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        // Play the audio to analyze it
+        await audioTag.play();
+        isPlaying = true;
+
+        // Analyze for 3 seconds to get average values
+        const analyzeDuration = 3000; // 3 seconds
+        const analyzeInterval = 50; // 50ms intervals
+        let analyzeCount = 0;
+        const maxCount = analyzeDuration / analyzeInterval;
+
+        const analyzeTimer = setInterval(() => {
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            const time = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(data);
+            analyser.getByteTimeDomainData(time);
+
+            // Calculate loudness
+            let sum = 0;
+            for (let v of time) {
+                let n = (v - 128) / 128;
+                sum += n * n;
+            }
+            const loudness = Math.sqrt(sum / time.length) * 10.0;
+
+            // Calculate pitch
+            let te = 0, we = 0;
+            for (let i = 0; i < data.length; i++) {
+                we += i * data[i];
+                te += data[i];
+            }
+            const pitch = te > 0 ? (we / te) / 50.0 : 0;
+            const brightness = pitch * 1.2;
+
+            // Calculate roughness
+            let zcr = 0;
+            for (let i = 1; i < time.length; i++) {
+                if (time[i] > 128 && time[i - 1] <= 128) zcr++;
+            }
+            const roughness = zcr / 40.0;
+
+            // Accumulate values
+            recordedX.loudness += loudness;
+            recordedX.pitch += pitch;
+            recordedX.brightness += brightness;
+            recordedX.roughness += roughness;
+            recordedX.count++;
+
+            analyzeCount++;
+            if (analyzeCount >= maxCount) {
+                clearInterval(analyzeTimer);
+
+                // Calculate averages
+                if (recordedX.count > 0) {
+                    recordedX.loudness /= recordedX.count;
+                    recordedX.pitch /= recordedX.count;
+                    recordedX.brightness /= recordedX.count;
+                    recordedX.roughness /= recordedX.count;
+                }
+
+                console.log('File analysis complete:', recordedX);
+
+                // Pause after analysis
+                audioTag.pause();
+                audioTag.currentTime = 0;
+                isPlaying = false;
+
+                // Switch to REVIEWING state
+                state = 'REVIEWING';
+                document.getElementById('labeling-zone').style.display = 'block';
+                document.getElementById('btn-play').style.display = 'block';
+                document.getElementById('btn-confirm').style.display = 'block';
+                updateAllUIText();
+                updateStatus(t.statusReviewing, 'status-review');
+            }
+        }, analyzeInterval);
+
+        // Reset file input
+        event.target.value = '';
+
+    } catch (err) {
+        console.error('File upload error:', err);
+        alert(currentLang === 'KR' ? '파일 로드 실패: ' + err.message : 'File load failed: ' + err.message);
+        event.target.value = '';
     }
 }
 
@@ -214,37 +355,79 @@ function animate() {
     if (!analyser) return;
 
     analyzeAudio();
-    
+
     shaderUniforms.uTime.value += 0.05;
     shaderUniforms.uLoudness.value = currentX.loudness;
 
     if (state === 'REVIEWING') {
+        // REVIEWING 모드: 슬라이더 값 즉시 반영
         targetY.y1 = parseFloat(document.getElementById('y1').value);
         targetY.y2 = parseFloat(document.getElementById('y2').value);
         targetY.y3 = parseFloat(document.getElementById('y3').value);
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
-    } else if (state === 'IDLE' && customTrainingData.length >= 1) {
-        brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
-            if(!err) {
-                targetY.y1 = res[0].value; targetY.y2 = res[1].value;
-                targetY.y3 = res[2].value; targetY.y4 = res[3].value;
-                let predShape = Math.round(res[4].value * 5);
-                predShape = Math.max(0, Math.min(5, predShape));
-                if(predShape !== currentY.shape) { 
-                    currentY.shape = predShape; 
-                    createShape(predShape); 
-                    updateShapeNameDisplay();
+    } else if (brain) {
+        // AI 예측 모드 (brain이 있으면 항상 예측)
+        // Throttle: 5프레임마다 1번만 실행
+        predictionFrameCounter++;
+        if (predictionFrameCounter >= PREDICTION_INTERVAL) {
+            predictionFrameCounter = 0;
+
+            // Race condition 방지: 예측 ID로 오래된 결과 무시
+            const currentPredictionId = ++activePredictionId;
+            const features = [currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness];
+
+            brain.predict(features, (err, res) => {
+                // 새로운 예측이 이미 시작되었으면 이 결과 무시
+                if (currentPredictionId !== activePredictionId) return;
+
+                if (err) {
+                    console.error('⚠️ Brain prediction error:', err);
+                    return;
                 }
-            }
-        });
+
+                if (!res || res.length < 5) {
+                    console.warn('⚠️ Invalid prediction result - expected 5 outputs, got:', res ? res.length : 'null');
+                    return;
+                }
+
+                // NaN 검증: 유효한 값만 적용
+                const y1 = res[0].value;
+                const y2 = res[1].value;
+                const y3 = res[2].value;
+                const y4 = res[3].value;
+                const shape = res[4].value;
+
+                if (!isNaN(y1)) targetY.y1 = y1;
+                if (!isNaN(y2)) targetY.y2 = y2;
+                if (!isNaN(y3)) targetY.y3 = y3;
+                if (!isNaN(y4)) targetY.y4 = y4;
+                if (!isNaN(shape)) targetY.shape = shape;
+            });
+        }
     }
 
-    for(let k of ['y1', 'y2', 'y3', 'y4']) {
-        currentY[k] += (targetY[k] - currentY[k]) * 0.1;
+    // 시각화 수치 부드럽게 전이 (리뷰 모드에서는 더 빠르게)
+    const lerpSpeed = (state === 'REVIEWING') ? RENDER_CONSTANTS.LERP_SPEED_REVIEWING : RENDER_CONSTANTS.LERP_SPEED_LIVE;
+    currentY.y1 += (targetY.y1 - currentY.y1) * lerpSpeed;
+    currentY.y2 += (targetY.y2 - currentY.y2) * lerpSpeed;
+    currentY.y3 += (targetY.y3 - currentY.y3) * lerpSpeed;
+    currentY.y4 += (targetY.y4 - currentY.y4) * lerpSpeed;
+    currentY.shape += (targetY.shape - currentY.shape) * lerpSpeed;
+
+    // 형태 변경 감지 (previousShape 사용)
+    const roundedShape = Math.round(currentY.shape);
+    if (roundedShape !== previousShape && roundedShape >= 0 && roundedShape <= 5) {
+        previousShape = roundedShape;
+        createShape(roundedShape);
+        updateShapeNameDisplay();
+    }
+
+    // Shader uniforms 업데이트
+    for (let k of ['y1', 'y2', 'y3', 'y4']) {
         shaderUniforms[`u${k.toUpperCase()}`].value = currentY[k];
     }
-    
+
     if (currentMesh) currentMesh.rotation.y += 0.005;
     if (renderer) renderer.render(scene, camera);
 }
@@ -357,6 +540,7 @@ const translations = {
     KR: {
         title: "IML Research", btnEngine: "오디오 엔진 가동", btnRecord: "녹음 시작", btnStop: "중단", btnReRecord: "다시 녹음",
         btnPlay: "소리 재생", btnPause: "재생 중지", btnConfirm: "데이터 확정 및 학습", btnExport: "CSV 추출",
+        btnUpload: "파일 업로드",
         statusReady: "준비 완료", statusRecording: "녹음 중...", statusReviewing: "검토 및 라벨링",
         labelLoud: "음량", labelPitch: "음높이", labelBright: "밝기", labelRough: "거칠기",
         y1Label: "y1: 각짐", y1Left: "둥근", y1Right: "각진",
@@ -369,6 +553,7 @@ const translations = {
     EN: {
         title: "IML Research", btnEngine: "Start Engine", btnRecord: "Record", btnStop: "Stop", btnReRecord: "Re-record",
         btnPlay: "Play", btnPause: "Pause", btnConfirm: "Confirm & Train", btnExport: "Export CSV",
+        btnUpload: "Upload File",
         statusReady: "Ready", statusRecording: "Recording...", statusReviewing: "Reviewing...",
         labelLoud: "Loudness", labelPitch: "Pitch", labelBright: "Brightness", labelRough: "Roughness",
         y1Label: "y1: Angularity", y1Left: "Round", y1Right: "Angular",
@@ -392,6 +577,7 @@ function updateAllUIText() {
     const mapping = {
         'title': t.title, 'btn-engine': t.btnEngine, 'btn-confirm': t.btnConfirm,
         'btn-play': isPlaying ? t.btnPause : t.btnPlay, // Fix: Added Play button text
+        'btn-upload': t.btnUpload,
         'label-loud': t.labelLoud, 'label-pitch': t.labelPitch, 'label-bright': t.labelBright, 'label-rough': t.labelRough,
         'y1-label': t.y1Label, 'y1-left': t.y1Left, 'y1-right': t.y1Right,
         'y2-label': t.y2Label, 'y2-left': t.y2Left, 'y2-right': t.y2Right,
