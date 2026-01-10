@@ -692,9 +692,12 @@ function createShape(type) {
         default: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
     }
 
+    // Use cube-specific shader for cube to achieve mirror symmetry
+    const vShader = (type === 1) ? cubeVertexShader : vertexShader;
+
     const mat = new THREE.ShaderMaterial({
         uniforms: appState.visuals.uniforms,
-        vertexShader,  // Use standard shader for all shapes
+        vertexShader: vShader,
         fragmentShader,
         wireframe: true,
         transparent: true
