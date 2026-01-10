@@ -196,6 +196,8 @@ function autoSuggestParameters(audioFeatures) {
 
 // --- 3D Initialization ---
 function initThree() {
+    console.log('🎬 initThree() called');
+
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x050505);
 
@@ -211,9 +213,14 @@ function initThree() {
     renderer.domElement.style.zIndex = '1';
     document.body.appendChild(renderer.domElement);
 
+    console.log('✅ Renderer created and appended to body');
+    console.log('Canvas size:', rightPanelWidth, 'x', window.innerHeight);
+
     window.addEventListener('resize', onWindowResize);
     createShape(0);
+    console.log('✅ Initial shape created');
     animate();
+    console.log('✅ Animation loop started');
 }
 
 function onWindowResize() {
@@ -694,9 +701,10 @@ function togglePlayback() {
 
 function animate() {
     requestAnimationFrame(animate);
-    if (!analyser) return;
 
-    analyzeAudio();
+    if (analyser) {
+        analyzeAudio();
+    }
 
     shaderUniforms.uTime.value += 0.05;
     shaderUniforms.uLoudness.value = currentX.loudness;
