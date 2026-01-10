@@ -851,6 +851,7 @@ function saveRecording() {
         appState.audio.recorded.roughness /= appState.audio.recorded.count;
 
         console.log('📝 Recorded audio features:', appState.audio.recorded);
+        console.log('🔢 Audio features:', appState.audio.recorded, 'normalized:', normalizeAudioFeatures(appState.audio.recorded));
 
         // Predict or classify shape
         if (appState.ml.trainingData.length > 0) {
@@ -949,6 +950,7 @@ async function handleFileUpload(event) {
                 }
 
                 console.log('File analysis complete:', appState.audio.recorded);
+                console.log('🔢 Audio features:', appState.audio.recorded, 'normalized:', normalizeAudioFeatures(appState.audio.recorded));
 
                 const autoShape = autoClassifyShape(appState.audio.recorded);
                 appState.ui.elements.shapeSelector.value = autoShape;
