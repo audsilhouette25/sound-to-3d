@@ -7,7 +7,7 @@
 const API_URL = 'https://sound-to-3d-server.onrender.com';
 const USE_SERVER = true; // Server enabled - data syncs across all browsers
 
-const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron'];
+const SHAPE_NAMES = ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Tetrahedron'];
 
 const CONSTANTS = {
     // Audio normalization
@@ -317,7 +317,7 @@ function autoClassifyShape(features) {
     scores[4] = (normalized.roughness < 0.4 ? (1 - normalized.roughness) * 0.6 : 0) +
                 (normalized.loudness > 0.5 ? normalized.loudness * 0.7 : 0);
 
-    // Octahedron: 복잡하고 거친 (percussion, claps, rough sounds)
+    // Tetrahedron: 복잡하고 거친 (percussion, claps, rough sounds - sharp and edgy)
     scores[5] = (normalized.roughness > 0.4 ? normalized.roughness * 0.8 : normalized.roughness * 0.3) +
                 (normalized.loudness > 0.6 ? normalized.loudness * 0.5 : 0) +
                 (normalized.brightness > 0.3 ? 0.3 : 0);
@@ -629,7 +629,7 @@ function createShape(type) {
         case 2: geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128); break;
         case 3: geo = new THREE.ConeGeometry(1, 2, 64, 64); break;
         case 4: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
-        default: geo = new THREE.OctahedronGeometry(1.3, 3); break;  // Octahedron with slight subdivision (still angular but refined)
+        default: geo = new THREE.TetrahedronGeometry(1.5, 32); break;  // Tetrahedron for percussive sounds
     }
 
     const mat = new THREE.ShaderMaterial({
