@@ -914,11 +914,10 @@ async function loadTrainingData() {
         if (dc) dc.innerText = customTrainingData.length;
 
         if (brain && customTrainingData.length > 0) {
+            console.log('⏳ Loading previous training data into brain...');
             customTrainingData.forEach(i => brain.addData([i.x.loudness, i.x.pitch, i.x.brightness, i.x.roughness], i.y));
             brain.normalizeData();
-            brain.train({ epochs: 10 }, () => {
-                console.log('Model trained with loaded data');
-            });
+            console.log('✅ Data loaded. Model will train when you add new data.');
         }
     } catch (e) {
         console.error('Failed to load training data:', e);
