@@ -159,7 +159,7 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
     scores[5] = (normalizedRoughness > 0.5 ? normalizedRoughness * 0.7 : 0) +
                 (normalizedBrightness * 0.3);
 
-    console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
+    console.log(' Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
 
     // Return shape with highest score
     let maxScore = -1;
@@ -171,7 +171,7 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
         }
     }
 
-    console.log(`✅ Selected: ${SHAPE_NAMES[bestShape]} (score: ${maxScore.toFixed(3)})`);
+    console.log(`Selected: ${SHAPE_NAMES[bestShape]} (score: ${maxScore.toFixed(3)})`);
     return bestShape;
 }
 
@@ -201,7 +201,7 @@ function autoSuggestParameters(audioFeatures) {
 
 // --- 3D Initialization ---
 function initThree() {
-    console.log('🎬 initThree() called');
+    console.log('initThree() called');
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x050505);
@@ -218,14 +218,14 @@ function initThree() {
     renderer.domElement.style.zIndex = '1';
     document.body.appendChild(renderer.domElement);
 
-    console.log('✅ Renderer created and appended to body');
+    console.log('Renderer created and appended to body');
     console.log('Canvas size:', rightPanelWidth, 'x', window.innerHeight);
 
     window.addEventListener('resize', onWindowResize);
     createShape(0);
-    console.log('✅ Initial shape created');
+    console.log('Initial shape created');
     animate();
-    console.log('✅ Animation loop started');
+    console.log('Animation loop started');
 }
 
 function onWindowResize() {
@@ -803,7 +803,7 @@ function animate() {
     if (renderer && scene && camera) {
         renderer.render(scene, camera);
     } else if (!renderer) {
-        console.error('❌ Renderer is null in animate()');
+        console.error('[ERROR]Renderer is null in animate()');
     }
 }
 
@@ -893,14 +893,14 @@ function confirmTrainingWrapper() {
     }
 
     setTimeout(() => {
-        console.log('🎓 Starting training in background...');
+        console.log('Starting training in background...');
         console.log('Current state:', state);
         console.log('Renderer exists:', !!renderer);
         console.log('Current mesh exists:', !!currentMesh);
 
         brain.train({ epochs: 50 }, () => {
             isBrainTrained = true;
-            console.log('✅ Training complete! AI mode enabled.');
+            console.log('Training complete! AI mode enabled.');
             console.log('State after training:', state);
 
             // Hide training overlay and reload page
@@ -970,10 +970,10 @@ async function loadTrainingData() {
         if (dc) dc.innerText = customTrainingData.length;
 
         if (brain && customTrainingData.length > 0) {
-            console.log('⏳ Loading previous training data into brain...');
+            console.log('Loading previous training data into brain...');
             customTrainingData.forEach(i => brain.addData([i.x.loudness, i.x.pitch, i.x.brightness, i.x.roughness], i.y));
             brain.normalizeData();
-            console.log('✅ Data loaded. Model will train when you add new data.');
+            console.log('Data loaded. Model will train when you add new data.');
         }
     } catch (e) {
         console.error('Failed to load training data:', e);
