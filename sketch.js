@@ -903,16 +903,10 @@ function confirmTrainingWrapper() {
             console.log('Training complete! AI mode enabled.');
             console.log('State after training:', state);
 
-            // Hide training overlay and reload page
-            if (overlay) {
-                message.textContent = currentLang === 'KR' ? '학습 완료! 페이지 새로고침 중...' : 'Training complete! Refreshing page...';
-                progress.textContent = '';
-            }
-
-            // Auto-refresh after 1 second to ensure clean state
+            // Auto-refresh after brief delay to ensure clean state
             setTimeout(() => {
                 location.reload();
-            }, 1000);
+            }, 500);
         });
     }, 500);
 }
