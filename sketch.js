@@ -295,30 +295,32 @@ function autoClassifyShape(features) {
 
     const scores = [0, 0, 0, 0, 0, 0];
 
-    // Use main branch's proven classification logic
-    // Sphere: 부드럽고 중간 범위
-    scores[0] = (1 - normalized.roughness) * 0.4 +
-                (normalized.pitch > 0.3 && normalized.pitch < 0.7 ? 0.6 : 0);
+    // Sphere: 부드럽고 조용한 (ONLY for very smooth and quiet sounds)
+    scores[0] = (normalized.roughness < 0.3 ? (1 - normalized.roughness) * 0.5 : 0) +
+                (normalized.loudness < 0.4 ? (1 - normalized.loudness) * 0.3 : 0) +
+                (normalized.pitch > 0.3 && normalized.pitch < 0.7 ? 0.2 : 0);
 
-    // Cube: 밝고 적당히 거친
-    scores[1] = normalized.brightness * 0.5 +
-                (normalized.roughness > 0.3 && normalized.roughness < 0.7 ? 0.5 : 0);
+    // Cube: 밝고 적당히 거친 (sharp percussive sounds)
+    scores[1] = normalized.brightness * 0.6 +
+                (normalized.roughness > 0.4 ? normalized.roughness * 0.6 : 0) +
+                (normalized.loudness > 0.5 ? 0.3 : 0);
 
     // Torus: 중간-높은 pitch, 회전감
-    scores[2] = (normalized.pitch > 0.5 ? 0.6 : 0.2) +
-                normalized.loudness * 0.4;
+    scores[2] = (normalized.pitch > 0.5 ? normalized.pitch * 0.7 : 0.2) +
+                normalized.loudness * 0.5;
 
     // Cone: 높고 날카로운
-    scores[3] = (normalized.pitch > 0.6 ? 0.5 : 0) +
-                (normalized.brightness > 0.6 ? 0.5 : 0);
+    scores[3] = (normalized.pitch > 0.6 ? normalized.pitch * 0.6 : 0) +
+                (normalized.brightness > 0.6 ? normalized.brightness * 0.5 : 0);
 
-    // Cylinder: 일정하고 연속적
-    scores[4] = (1 - normalized.roughness) * 0.5 +
-                (normalized.loudness > 0.3 ? 0.5 : 0);
+    // Cylinder: 부드럽지만 큰 소리
+    scores[4] = (normalized.roughness < 0.4 ? (1 - normalized.roughness) * 0.6 : 0) +
+                (normalized.loudness > 0.5 ? normalized.loudness * 0.7 : 0);
 
-    // Octahedron: 복잡하고 거친
-    scores[5] = normalized.roughness * 0.6 +
-                (normalized.brightness > 0.5 ? 0.4 : 0.2);
+    // Octahedron: 복잡하고 거친 (percussion, claps, rough sounds)
+    scores[5] = (normalized.roughness > 0.4 ? normalized.roughness * 0.8 : normalized.roughness * 0.3) +
+                (normalized.loudness > 0.6 ? normalized.loudness * 0.5 : 0) +
+                (normalized.brightness > 0.3 ? 0.3 : 0);
 
     console.log('📊 Shape scores:', scores.map((s, i) => `${SHAPE_NAMES[i]}: ${s.toFixed(3)}`).join(', '));
 
