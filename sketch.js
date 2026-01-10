@@ -14,7 +14,7 @@ const CONSTANTS = {
     LOUDNESS_NORMALIZER: 2.0,
     PITCH_NORMALIZER: 20.0,
     BRIGHTNESS_NORMALIZER: 24.0,
-    ROUGHNESS_NORMALIZER: 1.0,
+    ROUGHNESS_NORMALIZER: 4.0,  // Increased from 1.0 to handle peak values up to 3.4
 
     // Rendering
     CAMERA_FOV: 75,
