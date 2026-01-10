@@ -102,10 +102,10 @@ function autoClassifyShape(loudness, pitch, brightness, roughness) {
     }
 
     // Normalize values (0-1 range)
-    const normalizedLoudness = Math.min(1, Math.max(0, loudness / AUDIO_CONSTANTS.LOUDNESS_NORMALIZER));
-    const normalizedPitch = Math.min(1, Math.max(0, pitch));
-    const normalizedBrightness = Math.min(1, Math.max(0, brightness));
-    const normalizedRoughness = Math.min(1, Math.max(0, roughness));
+    const normalizedLoudness = Math.min(1, Math.max(0, loudness / LOUDNESS_NORMALIZER));
+    const normalizedPitch = Math.min(1, Math.max(0, pitch / PITCH_NORMALIZER));
+    const normalizedBrightness = Math.min(1, Math.max(0, brightness / BRIGHTNESS_NORMALIZER));
+    const normalizedRoughness = Math.min(1, Math.max(0, roughness / ROUGHNESS_NORMALIZER));
 
     console.log('🎵 Audio features:', {
         loudness: loudness.toFixed(3),
