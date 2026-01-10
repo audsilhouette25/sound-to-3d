@@ -497,11 +497,11 @@ function saveRecording() {
             // Use AI prediction
             brain.predict([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], (err, results) => {
                 if (!err && results && results.length === 5) {
-                    const predictedShape = Math.round(results[4] * 5);
+                    const predictedShape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
                     const shapeSelector = document.getElementById('shape-selector');
                     if (shapeSelector) {
                         shapeSelector.value = predictedShape;
-                        console.log('🤖 AI predicted shape:', SHAPE_NAMES[predictedShape]);
+                        console.log('🤖 AI predicted shape:', SHAPE_NAMES[predictedShape], 'raw:', results[4]);
                     }
                     // Update shape name display
                     updateShapeNameDisplay();
@@ -718,7 +718,7 @@ function animate() {
                     targetY.y2 = results[1];
                     targetY.y3 = results[2];
                     targetY.y4 = results[3];
-                    targetY.shape = Math.round(results[4] * 5);
+                    targetY.shape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
                 }
             });
         } else {
@@ -743,7 +743,7 @@ function animate() {
                     targetY.y2 = results[1];
                     targetY.y3 = results[2];
                     targetY.y4 = results[3];
-                    targetY.shape = Math.round(results[4] * 5);
+                    targetY.shape = Math.min(5, Math.max(0, Math.round(results[4] * 5)));
                 }
             });
         } else {
