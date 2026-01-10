@@ -629,7 +629,7 @@ function createShape(type) {
         case 2: geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128); break;
         case 3: geo = new THREE.ConeGeometry(1, 2, 64, 64); break;
         case 4: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
-        default: geo = new THREE.TetrahedronGeometry(1.5, 32); break;  // Tetrahedron for percussive sounds
+        default: geo = new THREE.TetrahedronGeometry(1.2, 16); break;  // Tetrahedron for percussive sounds
     }
 
     const mat = new THREE.ShaderMaterial({
@@ -1421,7 +1421,7 @@ const translations = {
         shapeLabel: "기본 형태",
         dataLabel: "학습 데이터:",
         samplesLabel: "개",
-        shapeNames: ['구', '정육면체', '토러스', '원뿔', '원기둥', '팔면체']
+        shapeNames: ['구', '정육면체', '토러스', '원뿔', '원기둥', '사면체']
     },
     EN: {
         title: "IML Research",
@@ -1457,7 +1457,7 @@ const translations = {
         shapeLabel: "Base Shape",
         dataLabel: "Data:",
         samplesLabel: "samples",
-        shapeNames: ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Octahedron']
+        shapeNames: ['Sphere', 'Cube', 'Torus', 'Cone', 'Cylinder', 'Tetrahedron']
     }
 };
 
