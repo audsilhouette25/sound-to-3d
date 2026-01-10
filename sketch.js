@@ -4,7 +4,7 @@ let audioTag = null;
 let brain;
 let scene, camera, renderer, currentMesh;
 let state = 'IDLE'; // IDLE, RECORDING, REVIEWING
-let isPlaying = false; // Track if audio is playing
+let isPlaying = false; 
 let recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
 let currentX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
 let targetY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
@@ -59,29 +59,6 @@ let shaderUniforms = {
     uY1: { value: 0.5 }, uY2: { value: 0.5 }, uY3: { value: 0.5 }, uY4: { value: 0.5 }
 };
 
-// Audio constants
-const LOUDNESS_NORMALIZER = 2.0;
-const PITCH_NORMALIZER = 1000.0;
-const BRIGHTNESS_NORMALIZER = 10000.0;
-const ROUGHNESS_NORMALIZER = 1.0;
-
-function autoClassifyShape(audioFeatures) {
-    const scores = { sphere: 0, cube: 0, torus: 0, cone: 0, cylinder: 0, octahedron: 0 };
-    let bestShape = 0;
-    let bestScore = -1;
-    const shapeNames = ['sphere', 'cube', 'torus', 'cone', 'cylinder', 'octahedron'];
-    shapeNames.forEach((name, idx) => { if (scores[name] > bestScore) { bestScore = scores[name]; bestShape = idx; } });
-    return bestShape;
-}
-
-function autoSuggestParameters(audioFeatures) {
-    const loud = Math.min(audioFeatures.loudness / LOUDNESS_NORMALIZER, 1.0);
-    const pitch = Math.min(audioFeatures.pitch / PITCH_NORMALIZER, 1.0);
-    const bright = Math.min(audioFeatures.brightness / BRIGHTNESS_NORMALIZER, 1.0);
-    const rough = Math.min(audioFeatures.roughness / ROUGHNESS_NORMALIZER, 1.0);
-    return { y1: pitch * 0.6 + bright * 0.4, y2: bright * 0.5 + rough * 0.5, y3: rough * 0.7 + (1 - loud) * 0.3, y4: bright * 0.5 + loud * 0.5 };
-}
-
 // --- Initialization ---
 function initThree() {
     const container = document.getElementById('three-container');
@@ -96,19 +73,15 @@ function initThree() {
     animate();
 }
 
-function createConnectedCube(size, subdivisions) {
-    const geo = new THREE.BoxGeometry(size, size, size, subdivisions, subdivisions, subdivisions);
-    return geo;
-}
-
 function createShape(type) {
     if (currentMesh) { scene.remove(currentMesh); currentMesh.geometry.dispose(); }
     let geo;
-    if (type == 0) geo = new THREE.SphereGeometry(1, 128, 128);
-    else if (type == 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
-    else if (type == 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
-    else if (type == 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
-    else if (type == 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
+    type = parseInt(type);
+    if (type === 0) geo = new THREE.SphereGeometry(1, 128, 128);
+    else if (type === 1) geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
+    else if (type === 2) geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128);
+    else if (type === 3) geo = new THREE.ConeGeometry(1, 2, 64, 64);
+    else if (type === 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
     else geo = new THREE.OctahedronGeometry(1.2, 32);
 
     const mat = new THREE.ShaderMaterial({ uniforms: shaderUniforms, vertexShader, fragmentShader, wireframe: true, transparent: true });
@@ -128,9 +101,11 @@ async function initEngine() {
     document.getElementById('btn-engine').style.display = 'none';
     document.getElementById('btn-main').style.display = 'block';
     document.getElementById('save-load-zone').style.display = 'block';
+    
+    loadTrainingData();
     updateAllUIText();
     initThree();
-    loadTrainingData();
+    updateStatus(translations[currentLang].statusReady, 'status-idle');
 }
 
 // --- Workflow ---
@@ -139,8 +114,8 @@ async function handleRecord() {
     if (state === 'IDLE' || state === 'REVIEWING') {
         state = 'RECORDING'; audioChunks = [];
         recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
-        if(audioTag) audioTag.pause();
-        isPlaying = false;
+        if(audioTag) { audioTag.pause(); isPlaying = false; }
+        
         try {
             if (!micStream) {
                 micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -160,6 +135,7 @@ async function handleRecord() {
         if (microphone) microphone.disconnect();
         document.getElementById('labeling-zone').style.display = 'block';
         document.getElementById('btn-play').style.display = 'block';
+        document.getElementById('btn-confirm').style.display = 'block';
         document.getElementById('btn-main').innerText = t.btnReRecord;
         updateStatus(t.statusReviewing, 'status-review');
     }
@@ -169,8 +145,12 @@ function saveRecording() {
     const blob = new Blob(audioChunks, { type: 'audio/wav' });
     audioTag = new Audio(URL.createObjectURL(blob));
     audioTag.loop = true;
-    recordedX.loudness /= recordedX.count; recordedX.pitch /= recordedX.count;
-    recordedX.brightness /= recordedX.count; recordedX.roughness /= recordedX.count;
+    if(recordedX.count > 0) {
+        recordedX.loudness /= recordedX.count; 
+        recordedX.pitch /= recordedX.count;
+        recordedX.brightness /= recordedX.count; 
+        recordedX.roughness /= recordedX.count;
+    }
 }
 
 function togglePlayback() {
@@ -180,7 +160,8 @@ function togglePlayback() {
     if (audioTag.paused) {
         if (!sourceNode) {
             sourceNode = audioCtx.createMediaElementSource(audioTag);
-            sourceNode.connect(analyser); analyser.connect(audioCtx.destination);
+            sourceNode.connect(analyser); 
+            analyser.connect(audioCtx.destination);
         }
         audioTag.play(); isPlaying = true;
         playBtn.innerText = t.btnPause;
@@ -194,6 +175,7 @@ function animate() {
     requestAnimationFrame(animate);
     if (!analyser) return;
     analyzeAudio();
+    
     shaderUniforms.uTime.value += 0.05;
     shaderUniforms.uLoudness.value = currentX.loudness;
 
@@ -203,13 +185,19 @@ function animate() {
         targetY.y3 = parseFloat(document.getElementById('y3').value);
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
-    } else if (state === 'IDLE' && customTrainingData.length >= 3) {
+    } else if (state === 'IDLE' && customTrainingData.length >= 1) {
+        // 학습된 데이터를 바탕으로 실시간 예측
         brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
             if(!err) {
                 targetY.y1 = res[0].value; targetY.y2 = res[1].value;
                 targetY.y3 = res[2].value; targetY.y4 = res[3].value;
                 let predShape = Math.round(res[4].value * 5);
-                if(predShape !== currentY.shape) { currentY.shape = predShape; createShape(predShape); }
+                predShape = Math.max(0, Math.min(5, predShape));
+                if(predShape !== currentY.shape) { 
+                    currentY.shape = predShape; 
+                    createShape(predShape); 
+                    updateShapeNameDisplay();
+                }
             }
         });
     }
@@ -228,17 +216,27 @@ function analyzeAudio() {
     } else {
         const data = new Uint8Array(analyser.frequencyBinCount);
         const time = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(data); analyser.getByteTimeDomainData(time);
-        let sum = 0; for(let v of time) { let n=(v-128)/128; sum+=n*n; }
+        analyser.getByteFrequencyData(data); 
+        analyser.getByteTimeDomainData(time);
+        
+        let sum = 0; 
+        for(let v of time) { let n=(v-128)/128; sum+=n*n; }
         currentX.loudness = Math.sqrt(sum/time.length) * 10.0;
-        let te=0, we=0; for(let i=0; i<data.length; i++) { we+=i*data[i]; te+=data[i]; }
+        
+        let te=0, we=0; 
+        for(let i=0; i<data.length; i++) { we+=i*data[i]; te+=data[i]; }
         currentX.pitch = te>0 ? (we/te)/50.0 : 0;
         currentX.brightness = currentX.pitch * 1.2;
-        let zcr=0; for(let i=1; i<time.length; i++) if(time[i]>128 && time[i-1]<=128) zcr++;
+        
+        let zcr=0; 
+        for(let i=1; i<time.length; i++) if(time[i]>128 && time[i-1]<=128) zcr++;
         currentX.roughness = zcr/40.0;
+        
         if (state === 'RECORDING') {
-            recordedX.loudness += currentX.loudness; recordedX.pitch += currentX.pitch;
-            recordedX.brightness += currentX.brightness; recordedX.roughness += currentX.roughness;
+            recordedX.loudness += currentX.loudness; 
+            recordedX.pitch += currentX.pitch;
+            recordedX.brightness += currentX.brightness; 
+            recordedX.roughness += currentX.roughness;
             recordedX.count++;
         }
     }
@@ -249,18 +247,31 @@ function analyzeAudio() {
 }
 
 function confirmTrainingWrapper() {
-    const labels = [targetY.y1, targetY.y2, targetY.y3, targetY.y4, targetY.shape / 5.0];
+    const labels = [
+        parseFloat(document.getElementById('y1').value), 
+        parseFloat(document.getElementById('y2').value), 
+        parseFloat(document.getElementById('y3').value), 
+        parseFloat(document.getElementById('y4').value), 
+        parseInt(document.getElementById('shape-selector').value) / 5.0
+    ];
     brain.addData([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], labels);
     customTrainingData.push({ x: {...recordedX}, y: labels });
     saveTrainingData();
+    
+    updateStatus("학습 중...", "status-recording");
+    
     brain.normalizeData();
-    brain.train({ epochs: 32 }, () => {
-        alert(currentLang === 'KR' ? "학습 완료!" : "Training complete!");
+    brain.train({ epochs: 50 }, () => {
+        alert(currentLang === 'KR' ? "학습 완료! 이제 실시간으로 예측합니다." : "Training complete! Now predicting in real-time.");
         document.getElementById('data-count').innerText = customTrainingData.length;
+        
+        // 학습 후 즉시 IDLE 상태로 전환하여 예측 시작
         state = 'IDLE'; 
         document.getElementById('labeling-zone').style.display = 'none';
         document.getElementById('btn-play').style.display = 'none';
+        document.getElementById('btn-confirm').style.display = 'none';
         updateStatus(translations[currentLang].statusReady, 'status-idle');
+        updateAllUIText();
     });
 }
 
@@ -276,13 +287,20 @@ function loadTrainingData() {
         customTrainingData = saveObj.data || [];
         document.getElementById('data-count').innerText = customTrainingData.length;
         if (brain && customTrainingData.length > 0) {
-            customTrainingData.forEach(item => brain.addData([item.x.loudness, item.x.pitch, item.x.brightness, item.x.roughness], item.y));
-            if (customTrainingData.length >= 3) {
-                brain.normalizeData();
-                brain.train({ epochs: 10 }, () => console.log('Loaded & Trained'));
-            }
+            customTrainingData.forEach(item => {
+                brain.addData([item.x.loudness, item.x.pitch, item.x.brightness, item.x.roughness], item.y);
+            });
+            brain.normalizeData();
+            brain.train({ epochs: 10 }, () => console.log('Model loaded and trained.'));
         }
     } catch (e) { console.error(e); }
+}
+
+function clearAllData() {
+    if(confirm(currentLang === 'KR' ? "모든 데이터를 삭제하시겠습니까?" : "Clear all training data?")) {
+        localStorage.removeItem('soundTo3D_trainingData');
+        location.reload();
+    }
 }
 
 // --- UI & Translation ---
@@ -290,7 +308,7 @@ const translations = {
     KR: {
         title: "IML Research", btnEngine: "오디오 엔진 가동", btnRecord: "녹음 시작", btnStop: "중단", btnReRecord: "다시 녹음",
         btnPlay: "소리 재생", btnPause: "재생 중지", btnConfirm: "데이터 확정 및 학습", btnExport: "CSV 추출",
-        statusReady: "준비 완료", statusRecording: "녹음 중...", statusReviewing: "검토 중...",
+        statusReady: "준비 완료", statusRecording: "녹음 중...", statusReviewing: "검토 및 라벨링",
         labelLoud: "음량", labelPitch: "음높이", labelBright: "밝기", labelRough: "거칠기",
         y1Label: "y1: 각짐", y1Left: "둥근", y1Right: "각진",
         y2Label: "y2: 뾰족함", y2Left: "부드러운", y2Right: "뾰족한",
@@ -313,26 +331,37 @@ const translations = {
     }
 };
 
-function toggleLanguage() { currentLang = currentLang === 'KR' ? 'EN' : 'KR'; updateAllUIText(); }
+function toggleLanguage() { 
+    currentLang = currentLang === 'KR' ? 'EN' : 'KR'; 
+    updateAllUIText(); 
+}
 
 function updateAllUIText() {
     const t = translations[currentLang];
     document.getElementById('lang-toggle').innerText = currentLang === 'KR' ? 'EN' : 'KR';
 
-    // ID mapping logic: label-loud -> labelLoud
-    const ids = ['title', 'btn-engine', 'btn-confirm', 'btn-export', 'label-loud', 'label-pitch', 'label-bright', 'label-rough', 
-                 'y1-label', 'y1-left', 'y1-right', 'y2-label', 'y2-left', 'y2-right', 
-                 'y3-label', 'y3-left', 'y3-right', 'y4-label', 'y4-left', 'y4-right', 
-                 'shape-label', 'data-label', 'samples-label', 'labeling-instruction'];
+    // 매핑 테이블 (ID : 번역키)
+    const mapping = {
+        'title': t.title,
+        'btn-engine': t.btnEngine,
+        'btn-confirm': t.btnConfirm,
+        'label-loud': t.labelLoud,
+        'label-pitch': t.labelPitch,
+        'label-bright': t.labelBright,
+        'label-rough': t.labelRough,
+        'y1-label': t.y1Label, 'y1-left': t.y1Left, 'y1-right': t.y1Right,
+        'y2-label': t.y2Label, 'y2-left': t.y2Left, 'y2-right': t.y2Right,
+        'y3-label': t.y3Label, 'y3-left': t.y3Left, 'y3-right': t.y3Right,
+        'y4-label': t.y4Label, 'y4-left': t.y4Left, 'y4-right': t.y4Right,
+        'shape-label': t.shapeLabel,
+        'data-label': t.dataLabel,
+        'samples-label': t.samplesLabel
+    };
 
-    ids.forEach(id => {
+    for (let id in mapping) {
         const el = document.getElementById(id);
-        if (el) {
-            // Convert 'label-loud' to 'labelLoud'
-            const key = id.split('-').map((word, i) => i === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)).join('');
-            if (t[key]) el.innerText = t[key];
-        }
-    });
+        if (el) el.innerText = mapping[id];
+    }
 
     const mainBtn = document.getElementById('btn-main');
     if (mainBtn) {
@@ -341,8 +370,14 @@ function updateAllUIText() {
         else if (state === 'REVIEWING') mainBtn.innerText = t.btnReRecord;
     }
     
-    const shapeSelector = document.getElementById('shape-selector');
-    if (shapeSelector) document.getElementById('shape-name').innerText = t.shapeNames[parseInt(shapeSelector.value)];
+    updateShapeNameDisplay();
+}
+
+function updateShapeNameDisplay() {
+    const t = translations[currentLang];
+    const val = document.getElementById('shape-selector').value;
+    const nameEl = document.getElementById('shape-name');
+    if(nameEl) nameEl.innerText = t.shapeNames[parseInt(val)];
 }
 
 function updateStatus(msg, cls) { 
@@ -351,28 +386,23 @@ function updateStatus(msg, cls) {
 }
 
 function changeShape(val) { 
-    if(translations[currentLang]) {
-        document.getElementById('shape-name').innerText = translations[currentLang].shapeNames[val]; 
-        createShape(val); 
-    }
+    updateShapeNameDisplay();
+    createShape(val); 
 }
 
 function exportCSV() {
     let csv = "loudness,pitch,brightness,roughness,y1,y2,y3,y4,shape\n";
-    customTrainingData.forEach(d => { csv += `${d.x.loudness},${d.x.pitch},${d.x.brightness},${d.x.roughness},${d.y.join(',')}\n`; });
+    customTrainingData.forEach(d => { 
+        csv += `${d.x.loudness},${d.x.pitch},${d.x.brightness},${d.x.roughness},${d.y.join(',')}\n`; 
+    });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `IML_Data.csv`; a.click();
+    a.download = `IML_Data.csv`; 
+    a.click();
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    updateAllUIText();
-    const saved = localStorage.getItem('soundTo3D_trainingData');
-    if (saved) {
-        try {
-            const saveObj = JSON.parse(saved);
-            const countEl = document.getElementById('data-count');
-            if (countEl && saveObj.data) countEl.innerText = saveObj.data.length;
-        } catch(e) {}
-    }
+    // 초기 로드 시 텍스트 한 번 설정
+    const t = translations[currentLang];
+    document.getElementById('btn-engine').innerText = t.btnEngine;
 });
