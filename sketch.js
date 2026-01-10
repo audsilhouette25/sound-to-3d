@@ -3,7 +3,7 @@ let audioChunks = [];
 let audioTag = null;
 let brain;
 let scene, camera, renderer, currentMesh;
-let state = 'IDLE'; // IDLE, RECORDING, REVIEWING
+let state = 'IDLE'; 
 let isPlaying = false; 
 let recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
 let currentX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0 };
@@ -59,22 +59,31 @@ let shaderUniforms = {
     uY1: { value: 0.5 }, uY2: { value: 0.5 }, uY3: { value: 0.5 }, uY4: { value: 0.5 }
 };
 
-// --- Initialization ---
+// --- 3D Initialization (Fix: Container Check & Position) ---
 function initThree() {
-    const container = document.getElementById('three-container');
     scene = new THREE.Scene();
+    
+    // UI 너비(320px)를 제외한 나머지 영역 계산
     const rightPanelWidth = window.innerWidth - 320;
     camera = new THREE.PerspectiveCamera(75, rightPanelWidth / window.innerHeight, 0.1, 1000);
     camera.position.z = 3.5;
+
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(rightPanelWidth, window.innerHeight);
-    container.appendChild(renderer.domElement);
+    
+    // [중요] 캔버스를 화면 우측에 고정 배치하여 UI와 겹치지 않게 함
+    renderer.domElement.style.position = 'absolute';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '320px';
+    renderer.domElement.style.zIndex = '1';
+    document.body.appendChild(renderer.domElement);
+
     createShape(0);
     animate();
 }
 
 function createShape(type) {
-    if (currentMesh) { scene.remove(currentMesh); currentMesh.geometry.dispose(); }
+    if (currentMesh) { scene.remove(currentMesh); if(currentMesh.geometry) currentMesh.geometry.dispose(); }
     let geo;
     type = parseInt(type);
     if (type === 0) geo = new THREE.SphereGeometry(1, 128, 128);
@@ -84,33 +93,52 @@ function createShape(type) {
     else if (type === 4) geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64);
     else geo = new THREE.OctahedronGeometry(1.2, 32);
 
-    const mat = new THREE.ShaderMaterial({ uniforms: shaderUniforms, vertexShader, fragmentShader, wireframe: true, transparent: true });
+    const mat = new THREE.ShaderMaterial({ 
+        uniforms: shaderUniforms, 
+        vertexShader, 
+        fragmentShader, 
+        wireframe: true, 
+        transparent: true 
+    });
     currentMesh = new THREE.Mesh(geo, mat);
     scene.add(currentMesh);
 }
 
+// --- Audio & ML Engine ---
 async function initEngine() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // 브라우저 정책상 사용자 상호작용 후 resume 필요
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 2048;
+
     brain = ml5.neuralNetwork({
         inputs: ['loudness', 'pitch', 'brightness', 'roughness'],
         outputs: ['y1', 'y2', 'y3', 'y4', 'shape'],
         task: 'regression', debug: false
     });
-    document.getElementById('btn-engine').style.display = 'none';
-    document.getElementById('btn-main').style.display = 'block';
-    document.getElementById('save-load-zone').style.display = 'block';
+
+    const btnEngine = document.getElementById('btn-engine');
+    if(btnEngine) btnEngine.style.display = 'none';
+    
+    const btnMain = document.getElementById('btn-main');
+    if(btnMain) btnMain.style.display = 'block';
+    
+    const saveZone = document.getElementById('save-load-zone');
+    if(saveZone) saveZone.style.display = 'block';
     
     loadTrainingData();
-    updateAllUIText();
     initThree();
+    updateAllUIText();
     updateStatus(translations[currentLang].statusReady, 'status-idle');
 }
 
-// --- Workflow ---
+// --- Main Workflow ---
 async function handleRecord() {
     const t = translations[currentLang];
+    if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
+
     if (state === 'IDLE' || state === 'REVIEWING') {
         state = 'RECORDING'; audioChunks = [];
         recordedX = { loudness: 0, pitch: 0, brightness: 0, roughness: 0, count: 0 };
@@ -171,9 +199,11 @@ function togglePlayback() {
     }
 }
 
+// --- Animation Loop ---
 function animate() {
     requestAnimationFrame(animate);
     if (!analyser) return;
+
     analyzeAudio();
     
     shaderUniforms.uTime.value += 0.05;
@@ -186,7 +216,6 @@ function animate() {
         targetY.y4 = parseFloat(document.getElementById('y4').value);
         targetY.shape = parseInt(document.getElementById('shape-selector').value);
     } else if (state === 'IDLE' && customTrainingData.length >= 1) {
-        // 학습된 데이터를 바탕으로 실시간 예측
         brain.predict([currentX.loudness, currentX.pitch, currentX.brightness, currentX.roughness], (err, res) => {
             if(!err) {
                 targetY.y1 = res[0].value; targetY.y2 = res[1].value;
@@ -202,15 +231,18 @@ function animate() {
         });
     }
 
+    // Smooth transition
     for(let k of ['y1', 'y2', 'y3', 'y4']) {
         currentY[k] += (targetY[k] - currentY[k]) * 0.1;
         shaderUniforms[`u${k.toUpperCase()}`].value = currentY[k];
     }
+    
     if (currentMesh) currentMesh.rotation.y += 0.005;
     if (renderer) renderer.render(scene, camera);
 }
 
 function analyzeAudio() {
+    if (!analyser) return;
     if (state === 'REVIEWING' && !isPlaying) {
         currentX = {...recordedX};
     } else {
@@ -240,12 +272,17 @@ function analyzeAudio() {
             recordedX.count++;
         }
     }
-    document.getElementById('val-loud').innerText = currentX.loudness.toFixed(2);
-    document.getElementById('val-pitch').innerText = currentX.pitch.toFixed(2);
-    document.getElementById('val-bright').innerText = currentX.brightness.toFixed(2);
-    document.getElementById('val-rough').innerText = currentX.roughness.toFixed(2);
+    const valLoud = document.getElementById('val-loud');
+    if(valLoud) valLoud.innerText = currentX.loudness.toFixed(2);
+    const valPitch = document.getElementById('val-pitch');
+    if(valPitch) valPitch.innerText = currentX.pitch.toFixed(2);
+    const valBright = document.getElementById('val-bright');
+    if(valBright) valBright.innerText = currentX.brightness.toFixed(2);
+    const valRough = document.getElementById('val-rough');
+    if(valRough) valRough.innerText = currentX.roughness.toFixed(2);
 }
 
+// --- Training & Save ---
 function confirmTrainingWrapper() {
     const labels = [
         parseFloat(document.getElementById('y1').value), 
@@ -262,10 +299,10 @@ function confirmTrainingWrapper() {
     
     brain.normalizeData();
     brain.train({ epochs: 50 }, () => {
-        alert(currentLang === 'KR' ? "학습 완료! 이제 실시간으로 예측합니다." : "Training complete! Now predicting in real-time.");
-        document.getElementById('data-count').innerText = customTrainingData.length;
+        alert(currentLang === 'KR' ? "학습 완료! 이제 실시간 예측 모드입니다." : "Training complete! Predictive mode active.");
+        const dataCount = document.getElementById('data-count');
+        if(dataCount) dataCount.innerText = customTrainingData.length;
         
-        // 학습 후 즉시 IDLE 상태로 전환하여 예측 시작
         state = 'IDLE'; 
         document.getElementById('labeling-zone').style.display = 'none';
         document.getElementById('btn-play').style.display = 'none';
@@ -285,13 +322,14 @@ function loadTrainingData() {
     try {
         const saveObj = JSON.parse(saved);
         customTrainingData = saveObj.data || [];
-        document.getElementById('data-count').innerText = customTrainingData.length;
+        const dataCount = document.getElementById('data-count');
+        if(dataCount) dataCount.innerText = customTrainingData.length;
         if (brain && customTrainingData.length > 0) {
             customTrainingData.forEach(item => {
                 brain.addData([item.x.loudness, item.x.pitch, item.x.brightness, item.x.roughness], item.y);
             });
             brain.normalizeData();
-            brain.train({ epochs: 10 }, () => console.log('Model loaded and trained.'));
+            brain.train({ epochs: 10 }, () => console.log('Model ready.'));
         }
     } catch (e) { console.error(e); }
 }
@@ -338,24 +376,17 @@ function toggleLanguage() {
 
 function updateAllUIText() {
     const t = translations[currentLang];
-    document.getElementById('lang-toggle').innerText = currentLang === 'KR' ? 'EN' : 'KR';
+    const langBtn = document.getElementById('lang-toggle');
+    if(langBtn) langBtn.innerText = currentLang === 'KR' ? 'EN' : 'KR';
 
-    // 매핑 테이블 (ID : 번역키)
     const mapping = {
-        'title': t.title,
-        'btn-engine': t.btnEngine,
-        'btn-confirm': t.btnConfirm,
-        'label-loud': t.labelLoud,
-        'label-pitch': t.labelPitch,
-        'label-bright': t.labelBright,
-        'label-rough': t.labelRough,
+        'title': t.title, 'btn-engine': t.btnEngine, 'btn-confirm': t.btnConfirm,
+        'label-loud': t.labelLoud, 'label-pitch': t.labelPitch, 'label-bright': t.labelBright, 'label-rough': t.labelRough,
         'y1-label': t.y1Label, 'y1-left': t.y1Left, 'y1-right': t.y1Right,
         'y2-label': t.y2Label, 'y2-left': t.y2Left, 'y2-right': t.y2Right,
         'y3-label': t.y3Label, 'y3-left': t.y3Left, 'y3-right': t.y3Right,
         'y4-label': t.y4Label, 'y4-left': t.y4Left, 'y4-right': t.y4Right,
-        'shape-label': t.shapeLabel,
-        'data-label': t.dataLabel,
-        'samples-label': t.samplesLabel
+        'shape-label': t.shapeLabel, 'data-label': t.dataLabel, 'samples-label': t.samplesLabel
     };
 
     for (let id in mapping) {
@@ -369,13 +400,14 @@ function updateAllUIText() {
         else if (state === 'RECORDING') mainBtn.innerText = t.btnStop;
         else if (state === 'REVIEWING') mainBtn.innerText = t.btnReRecord;
     }
-    
     updateShapeNameDisplay();
 }
 
 function updateShapeNameDisplay() {
     const t = translations[currentLang];
-    const val = document.getElementById('shape-selector').value;
+    const selector = document.getElementById('shape-selector');
+    if(!selector) return;
+    const val = selector.value;
     const nameEl = document.getElementById('shape-name');
     if(nameEl) nameEl.innerText = t.shapeNames[parseInt(val)];
 }
@@ -402,7 +434,5 @@ function exportCSV() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    // 초기 로드 시 텍스트 한 번 설정
-    const t = translations[currentLang];
-    document.getElementById('btn-engine').innerText = t.btnEngine;
+    updateAllUIText();
 });
