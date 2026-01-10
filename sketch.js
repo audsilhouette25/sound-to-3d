@@ -624,12 +624,12 @@ function createShape(type) {
     type = parseInt(type);
 
     switch (type) {
-        case 0: geo = new THREE.SphereGeometry(1, 128, 128); break;
+        case 0: geo = new THREE.SphereGeometry(1, 128, 128); break;  // Smooth sphere
         case 1: geo = createConnectedCube(1.4, CONSTANTS.CUBE_SUBDIVISIONS); break;
         case 2: geo = new THREE.TorusGeometry(0.8, 0.4, 64, 128); break;
         case 3: geo = new THREE.ConeGeometry(1, 2, 64, 64); break;
         case 4: geo = new THREE.CylinderGeometry(0.8, 0.8, 2, 64, 64); break;
-        default: geo = new THREE.OctahedronGeometry(1.2, 32); break;
+        default: geo = new THREE.OctahedronGeometry(1.3, 3); break;  // Octahedron with slight subdivision (still angular but refined)
     }
 
     const mat = new THREE.ShaderMaterial({
@@ -733,6 +733,14 @@ async function handleRecord() {
             peakBrightness: 0,
             peakRoughness: 0
         };
+
+        // Reset to Sphere when starting new recording
+        appState.visuals.current.shape = 0;
+        appState.visuals.target.shape = 0;
+        appState.visuals.previousShape = -1;
+        createShape(0);
+        appState.ui.elements.shapeSelector.value = 0;
+        updateShapeNameDisplay();
 
         if (appState.audio.audioTag) {
             appState.audio.audioTag.pause();
@@ -1029,7 +1037,8 @@ function animate() {
     }
 
     appState.visuals.uniforms.uTime.value += CONSTANTS.TIME_INCREMENT;
-    appState.visuals.uniforms.uLoudness.value = appState.audio.features.loudness;
+    // Clamp loudness to prevent graphics from becoming too large
+    appState.visuals.uniforms.uLoudness.value = Math.min(appState.audio.features.loudness, 0.8);
 
     // Update target visuals based on state
     updateTargetVisuals();
