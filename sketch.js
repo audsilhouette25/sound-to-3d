@@ -503,8 +503,8 @@ function saveRecording() {
                         shapeSelector.value = predictedShape;
                         console.log('🤖 AI predicted shape:', SHAPE_NAMES[predictedShape]);
                     }
-                    // Update the current shape immediately
-                    changeShape(predictedShape);
+                    // Update shape name display
+                    updateShapeNameDisplay();
                 }
             });
         } else {
@@ -522,8 +522,8 @@ function saveRecording() {
                 shapeSelector.value = autoShape;
                 console.log('✏️ Rule-based shape:', SHAPE_NAMES[autoShape]);
             }
-            // Update the current shape immediately
-            changeShape(autoShape);
+            // Update shape name display
+            updateShapeNameDisplay();
         }
     }
 }
