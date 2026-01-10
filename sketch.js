@@ -853,29 +853,34 @@ function confirmTrainingWrapper() {
     customTrainingData.push({ x: {...recordedX}, y: labels });
     saveTrainingData();
 
-    updateStatus("학습 중...", "status-recording");
-    brain.normalizeData();
-
     // Check if brain has data before training
     if (customTrainingData.length === 0) {
         console.error('No training data available');
         return;
     }
 
-    // Use setTimeout to prevent blocking graphics rendering
+    // Update data count immediately
+    const dc = document.getElementById('data-count');
+    if (dc) dc.innerText = customTrainingData.length;
+
+    // Hide UI elements BEFORE training to keep graphics visible
+    document.getElementById('labeling-zone').style.display = 'none';
+    document.getElementById('btn-play').style.display = 'none';
+    document.getElementById('btn-confirm').style.display = 'none';
+    state = 'IDLE';
+    updateStatus(translations[currentLang].statusReady, 'status-idle');
+    updateAllUIText();
+
+    // Normalize and train in background after UI is hidden
+    brain.normalizeData();
+
     setTimeout(() => {
+        console.log('🎓 Starting training in background...');
         brain.train({ epochs: 20 }, () => {
-            isBrainTrained = true; // Mark brain as trained
-            alert(currentLang === 'KR' ? "학습 완료! 실시간 모드" : "Training Done! Real-time mode.");
-            const dc = document.getElementById('data-count'); if(dc) dc.innerText = customTrainingData.length;
-            state = 'IDLE';
-            document.getElementById('labeling-zone').style.display = 'none';
-            document.getElementById('btn-play').style.display = 'none';
-            document.getElementById('btn-confirm').style.display = 'none';
-            updateStatus(translations[currentLang].statusReady, 'status-idle');
-            updateAllUIText();
+            isBrainTrained = true;
+            console.log('✅ Training complete! AI mode enabled.');
         });
-    }, 100);
+    }, 500);
 }
 
 async function saveTrainingData() {
