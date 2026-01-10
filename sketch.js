@@ -836,23 +836,35 @@ function analyzeAudio() {
 }
 
 function confirmTrainingWrapper() {
+    if (!brain) {
+        console.error('Brain not initialized');
+        return;
+    }
+
     const labels = [
-        parseFloat(document.getElementById('y1').value), 
-        parseFloat(document.getElementById('y2').value), 
-        parseFloat(document.getElementById('y3').value), 
-        parseFloat(document.getElementById('y4').value), 
+        parseFloat(document.getElementById('y1').value),
+        parseFloat(document.getElementById('y2').value),
+        parseFloat(document.getElementById('y3').value),
+        parseFloat(document.getElementById('y4').value),
         parseInt(document.getElementById('shape-selector').value) / 5.0
     ];
     brain.addData([recordedX.loudness, recordedX.pitch, recordedX.brightness, recordedX.roughness], labels);
     customTrainingData.push({ x: {...recordedX}, y: labels });
     saveTrainingData();
-    
+
     updateStatus("학습 중...", "status-recording");
     brain.normalizeData();
+
+    // Check if brain has data before training
+    if (customTrainingData.length === 0) {
+        console.error('No training data available');
+        return;
+    }
+
     brain.train({ epochs: 50 }, () => {
         alert(currentLang === 'KR' ? "학습 완료! 실시간 모드" : "Training Done! Real-time mode.");
         const dc = document.getElementById('data-count'); if(dc) dc.innerText = customTrainingData.length;
-        state = 'IDLE'; 
+        state = 'IDLE';
         document.getElementById('labeling-zone').style.display = 'none';
         document.getElementById('btn-play').style.display = 'none';
         document.getElementById('btn-confirm').style.display = 'none';
