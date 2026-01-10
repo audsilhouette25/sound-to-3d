@@ -12,6 +12,7 @@ let currentY = { y1: 0.5, y2: 0.5, y3: 0.5, y4: 0.5, shape: 0 };
 let customTrainingData = [];
 let currentLang = 'KR';
 let micStream = null;
+let isBrainTrained = false; // Track if brain has been trained
 
 // API Configuration
 const API_URL = 'https://sound-to-3d-server.onrender.com';
@@ -747,8 +748,8 @@ function animate() {
             targetY.y4 = suggestedParams.y4;
         }
     } else if (state === 'IDLE') {
-        // IDLE state: Use AI prediction if trained data exists, otherwise keep sphere
-        if (customTrainingData.length > 0) {
+        // IDLE state: Use AI prediction if brain is trained, otherwise keep sphere
+        if (isBrainTrained && customTrainingData.length > 0) {
             // Use AI prediction every 5 frames to reduce load
             predictionFrameCounter++;
             if (predictionFrameCounter >= PREDICTION_INTERVAL) {
@@ -864,6 +865,7 @@ function confirmTrainingWrapper() {
     // Use setTimeout to prevent blocking graphics rendering
     setTimeout(() => {
         brain.train({ epochs: 20 }, () => {
+            isBrainTrained = true; // Mark brain as trained
             alert(currentLang === 'KR' ? "학습 완료! 실시간 모드" : "Training Done! Real-time mode.");
             const dc = document.getElementById('data-count'); if(dc) dc.innerText = customTrainingData.length;
             state = 'IDLE';
@@ -953,6 +955,7 @@ async function clearAllData() {
             // Clear localStorage
             localStorage.removeItem('soundTo3D_data');
             customTrainingData = [];
+            isBrainTrained = false; // Reset trained flag
 
             // If server is enabled, also clear server data
             if (USE_SERVER) {
